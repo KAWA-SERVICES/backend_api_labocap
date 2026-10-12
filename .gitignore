@@ -86,3 +86,11 @@ replay_pid*
 /SPEC-*.md
 /plan-rapport-*.md
 /rapport-L*.md
+
+# Claude Code — seuls les fichiers partagés de l'équipe sont versionnés
+.claude/*
+!.claude/settings.json
+!.claude/pipeline-profile.md
+!.claude/agents/
+!.claude/skills/
+__pycache__/
