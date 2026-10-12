@@ -196,7 +196,7 @@
         <dependency>
             <groupId>io.github.openhtmltopdf</groupId>
             <artifactId>openhtmltopdf-svg-support</artifactId>
-            <version>1.1.87</version>
+            <version>1.1.94</version>
         </dependency>
         <!-- Jsoup : normalise le HTML (contenu éditeur, balises non fermées,
              entités &nbsp;) en XHTML bien formé exigé par OpenHTMLToPDF -->
