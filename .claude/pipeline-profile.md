@@ -139,3 +139,6 @@ Le merge sur `main` déploie la production (`deploy.yml` : tests, puis SSH, `git
 Déploiement production et redéploiement manuel (`workflow_dispatch`) ; reprise de données Laravel ;
 restauration (`docs/restauration.md`) ; supervision serveur (`docs/supervision.md`,
 `docker-compose.supervision.yml`, `infra/`).
+
+Dépôt public : `conventions.yml` est une **copie** de kawa-standards (un dépôt public ne peut pas appeler un
+workflow privé). Quand kawa-standards change ses conventions, recopier le fichier ici.
