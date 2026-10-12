@@ -1,4 +1,4 @@
-# Standards KAWA — source : KAWA-SERVICES/kawa-standards (ne pas modifier ici, modifier là-bas).
+# Standards KAWA — conventions copiées localement (dépôt public), voir conventions.yml.
 name: kawa
 
 on:
@@ -14,4 +14,4 @@ permissions:
 
 jobs:
   conventions:
-    uses: KAWA-SERVICES/kawa-standards/.github/workflows/conventions.yml@main
+    uses: ./.github/workflows/conventions.yml
