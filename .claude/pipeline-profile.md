@@ -2,7 +2,7 @@
 
 Lu par `kawa-feature-pipeline` avant l'étape 0. Ne contient que ce qui est propre à ce projet ; tout le reste
 est dans le pipeline commun. Pas de `CLAUDE.md` dans le dépôt : ce profil est déduit du code
-(`origin/develop` au 2026-10-11, dépôt `serviceskawa/backend_api_labocap`).
+(`origin/develop` au 2026-10-11, dépôt `KAWA-SERVICES/backend_api_labocap`, transféré depuis `serviceskawa` le 2026-10-12).
 
 ## Contexte et risques majeurs
 API REST du laboratoire d'anatomopathologie (et de biologie, module optionnel) : Spring Boot 4.1.1 (Spring 7,
@@ -120,7 +120,8 @@ docker build -t labo-anapath-api:ci . && scripts/demarrage-ci.sh labo-anapath-ap
 ```
 CI (`.github/workflows/ci.yml`, sur PR vers `develop` et `main`) : numéros de migration uniques,
 `mvn verify`, démarrage de l'image de prod, `dependency-check` OWASP (CVSS ≥ 7 bloque, si `NVD_API_KEY`).
-`protect-branches.yml` : préfixes de branche `feat|fix|chore|hotfix|docs|refactor|dependabot/`.
+`kawa.yml` : conventions kawa-standards (flux de branches, Conventional Commits ; Dependabot commite en
+`build(deps): …`).
 
 ## Suivi
 — (pas de phases `stories/` pour l'instant ; les chantiers de sécurité sont numérotés « lot N » dans les

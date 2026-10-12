@@ -5,13 +5,16 @@ updates:
     directory: /
     schedule: { interval: weekly, day: monday, time: "07:00", timezone: Africa/Porto-Novo }
     target-branch: develop
+    commit-message: { prefix: build, include: scope }
     groups:
       spring: { patterns: ["org.springframework*"] }
   - package-ecosystem: docker
     directory: /
     schedule: { interval: weekly, day: monday, time: "07:00", timezone: Africa/Porto-Novo }
     target-branch: develop
+    commit-message: { prefix: build, include: scope }
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: weekly, day: monday, time: "07:00", timezone: Africa/Porto-Novo }
     target-branch: develop
+    commit-message: { prefix: build, include: scope }
