@@ -1,0 +1,71 @@
+# Copie de KAWA-SERVICES/kawa-standards/.github/workflows/conventions.yml (commit 37184f9).
+# Ce dépôt est public : il ne peut pas appeler les workflows du dépôt privé kawa-standards.
+# Modifier là-bas d'abord, puis recopier ici.
+name: conventions
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  branches:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Flux de branches
+        env:
+          HEAD: ${{ github.head_ref }}
+          BASE: ${{ github.base_ref }}
+        run: |
+          if [ "$BASE" = "main" ]; then
+            if [ "$HEAD" = "develop" ] || [[ "$HEAD" == hotfix/* ]]; then echo "✅ $HEAD → main"; exit 0; fi
+            echo "::error::Vers main, seules develop et hotfix/* sont acceptées (reçu : $HEAD). Passer par develop."
+            exit 1
+          fi
+          if ! [[ "$HEAD" =~ ^(feat|feature|fix|hotfix|chore|refactor|perf|test|docs|ci|build|release|learnings|dependabot)/ ]]; then
+            echo "::error::Nom de branche '$HEAD' invalide. Préfixes : feat/ fix/ hotfix/ chore/ refactor/ perf/ test/ docs/ ci/ build/ release/ learnings/ dependabot/"
+            exit 1
+          fi
+          echo "✅ $HEAD → $BASE"
+
+  commits:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Conventional Commits (titre de PR + commits)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: ${{ github.event.pull_request.title }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          HEAD: ${{ github.head_ref }}
+        run: |
+          RE='^(feat|fix|refactor|perf|test|docs|chore|ci|build|style|revert)(\([^)]+\))?!?: .+'
+          # develop → main et hotfix : les commits ont déjà été vérifiés en entrant sur develop.
+          [ "$HEAD" = "develop" ] && { echo "✅ PR de release, commits déjà vérifiés"; exit 0; }
+          bad=0
+          if ! [[ "$TITLE" =~ $RE ]]; then echo "::error::Titre de PR non conforme : $TITLE"; bad=1; fi
+          while IFS= read -r msg; do
+            [[ "$msg" =~ ^Merge\  ]] && continue
+            if ! [[ "$msg" =~ $RE ]]; then echo "::error::Commit non conforme : $msg"; bad=1; fi
+          done < <(gh api "repos/$REPO/pulls/$PR/commits" --paginate --jq '.[].commit.message | split("\n")[0]')
+          [ $bad = 0 ] && echo "✅ Conventional Commits" || echo "Format : type(portée): sujet — types : feat fix refactor perf test docs chore ci build style revert"
+          exit $bad
+
+  direct-push:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Push direct sur main/develop
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          PR=$(gh api "repos/$REPO/commits/$SHA/pulls" --jq '.[0].number' 2>/dev/null || true)
+          if [ -z "$PR" ]; then echo "::error::Push direct sur '$BRANCH' sans PR."; exit 1; fi
+          echo "✅ Arrivé par la PR #$PR"
