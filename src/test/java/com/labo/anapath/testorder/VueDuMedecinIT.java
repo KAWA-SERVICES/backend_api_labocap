@@ -41,13 +41,16 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Un médecin ne voit que les demandes qui lui sont confiées et les comptes
- * rendus qu'il signe ; l'administrateur voit tout.
+ * Un médecin voit toutes les demandes et tous les comptes rendus de son agence,
+ * y compris ceux d'un confrère. Le périmètre « ses dossiers seulement » (lot 7,
+ * point 4) a été levé le 22/10/2026 : les médecins ne retrouvaient pas par son
+ * code une demande qui ne leur était pas attribuée. Seul « Mon espace » reste
+ * borné à ses affectations, par construction.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @Testcontainers
 @AutoConfigureTestRestTemplate
-class PerimetreDuMedecinIT {
+class VueDuMedecinIT {
 
     @Container
     static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:15")
@@ -62,8 +65,8 @@ class PerimetreDuMedecinIT {
     }
 
     private static final UUID AGENCE = UUID.fromString("00000000-0000-0000-0000-000000000001");
-    private static final String MEDECIN = "perimetre_medecin@labo.bj";
-    private static final String ADMIN = "perimetre_admin@labo.bj";
+    private static final String MEDECIN = "vue_medecin@labo.bj";
+    private static final String CONFRERE = "vue_confrere@labo.bj";
 
     @Autowired private TestRestTemplate rest;
     @LocalServerPort private int port;
@@ -79,32 +82,35 @@ class PerimetreDuMedecinIT {
     private User medecin;
     private TestOrder laSienne;
     private TestOrder celleDUnConfrere;
+    private Report compteRenduDuConfrere;
 
     @BeforeEach
     void jeuDeDonnees() {
-        medecin = users.findByEmail(MEDECIN).orElseGet(() -> {
-            Role docteur = new Role();
-            docteur.setBranchId(AGENCE);
-            docteur.setName("Docteur");
-            // Le slug est ce qui fait le médecin — voir UserRepository.estMedecinBorne.
-            docteur.setSlug("docteur");
-            docteur.setPermissions(List.of(
+        Role docteur = roles.findBySlugAndBranchId("docteur", AGENCE).orElseGet(() -> {
+            Role r = new Role();
+            r.setBranchId(AGENCE);
+            r.setName("Docteur");
+            r.setSlug("docteur");
+            r.setPermissions(List.of(
                     permissions.findBySlug("view-test-orders").orElseThrow(),
-                    permissions.findBySlug("view-reports").orElseThrow()));
-            return creerUtilisateur(MEDECIN, roles.save(docteur));
+                    permissions.findBySlug("view-reports").orElseThrow(),
+                    permissions.findBySlug("view-test-order-assignments").orElseThrow()));
+            return roles.save(r);
         });
-        if (users.findByEmail(ADMIN).isEmpty()) {
-            creerUtilisateur(ADMIN, roles.findBySlugAndBranchId("admin", AGENCE).orElseThrow());
-        }
+        medecin = users.findByEmail(MEDECIN).orElseGet(() -> creerUtilisateur(MEDECIN, docteur));
+        User confrere = users.findByEmail(CONFRERE).orElseGet(() -> creerUtilisateur(CONFRERE, docteur));
         laSienne = demande("Confiée");
         laSienne.setAttribuateDoctorId(medecin.getId());
+        laSienne.setAssignedToUserId(medecin.getId());
         laSienne = demandes.save(laSienne);
-        celleDUnConfrere = demandes.save(demande("Confrère"));
+        celleDUnConfrere = demande("Confrère");
+        celleDUnConfrere.setCode("VUE-" + UUID.randomUUID().toString().substring(0, 8));
+        celleDUnConfrere.setAttribuateDoctorId(confrere.getId());
+        celleDUnConfrere.setAssignedToUserId(confrere.getId());
+        celleDUnConfrere = demandes.save(celleDUnConfrere);
 
-        Report signe = compteRendu(laSienne);
-        signe.setSignatory1(medecin);
-        comptesRendus.save(signe);
-        comptesRendus.save(compteRendu(celleDUnConfrere));
+        comptesRendus.save(compteRendu(laSienne));
+        compteRenduDuConfrere = comptesRendus.save(compteRendu(celleDUnConfrere));
     }
 
     private User creerUtilisateur(String email, Role role) {
@@ -156,52 +162,82 @@ class PerimetreDuMedecinIT {
             new ParameterizedTypeReference<>() {};
 
     @Test
-    @DisplayName("GET /test-orders : le médecin ne voit que les demandes qui lui sont confiées")
-    void listeDesDemandesDuMedecin() {
+    @DisplayName("GET /test-orders : le médecin voit aussi la demande d'un confrère")
+    void listeDesDemandes() {
         var reponse = page(MEDECIN, "/test-orders?size=100", DEMANDES);
         assertThat(reponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         List<UUID> ids = reponse.getBody().data().content().stream().map(TestOrderResponseDto::id).toList();
-        assertThat(ids).contains(laSienne.getId()).doesNotContain(celleDUnConfrere.getId());
-
-        // L'administrateur, lui, voit les deux.
-        List<UUID> tout = page(ADMIN, "/test-orders?size=100", DEMANDES)
-                .getBody().data().content().stream().map(TestOrderResponseDto::id).toList();
-        assertThat(tout).contains(laSienne.getId(), celleDUnConfrere.getId());
+        assertThat(ids).contains(laSienne.getId(), celleDUnConfrere.getId());
     }
 
     @Test
-    @DisplayName("GET /test-orders/{id} : la demande d'un confrère est introuvable pour le médecin")
-    void ficheDUnConfrere_404() {
-        ResponseEntity<String> ok = rest.exchange("http://localhost:" + port + "/api/v1/test-orders/" + laSienne.getId(),
-                HttpMethod.GET, connecte(MEDECIN), String.class);
-        ResponseEntity<String> refus = rest.exchange("http://localhost:" + port + "/api/v1/test-orders/" + celleDUnConfrere.getId(),
-                HttpMethod.GET, connecte(MEDECIN), String.class);
-        assertThat(ok.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(refus.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    @DisplayName("GET /test-orders?search=<code> : le médecin retrouve par son code une demande qui ne lui est pas attribuée")
+    void rechercheParCode() {
+        var reponse = page(MEDECIN, "/test-orders?search=" + celleDUnConfrere.getCode(), DEMANDES);
+        assertThat(reponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(reponse.getBody().data().content()).extracting(TestOrderResponseDto::id)
+                .containsExactly(celleDUnConfrere.getId());
     }
 
     @Test
-    @DisplayName("GET /test-orders/index (mobile) : seules les demandes confiées")
+    @DisplayName("GET /test-orders/{id} : la fiche d'une demande d'un confrère s'ouvre")
+    void ficheDUnConfrere() {
+        ResponseEntity<String> fiche = rest.exchange("http://localhost:" + port + "/api/v1/test-orders/" + celleDUnConfrere.getId(),
+                HttpMethod.GET, connecte(MEDECIN), String.class);
+        assertThat(fiche.getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
+
+    @Test
+    @DisplayName("GET /test-orders/index (mobile) : toutes les demandes de l'agence")
     void indexDuMobile() {
         ResponseEntity<ApiResponse<PageDIndexDto>> reponse = rest.exchange(
                 "http://localhost:" + port + "/api/v1/test-orders/index?taille=2000",
                 HttpMethod.GET, connecte(MEDECIN), new ParameterizedTypeReference<>() {});
         assertThat(reponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         List<UUID> ids = reponse.getBody().data().contenu().stream().map(EntreeDIndexDto::id).toList();
-        assertThat(ids).contains(laSienne.getId()).doesNotContain(celleDUnConfrere.getId());
+        assertThat(ids).contains(laSienne.getId(), celleDUnConfrere.getId());
     }
 
     @Test
-    @DisplayName("GET /reports : le médecin ne voit que les comptes rendus qu'il signe ou dont la demande lui est confiée")
-    void listeDesComptesRendusDuMedecin() {
+    @DisplayName("GET /reports : le médecin voit aussi le compte rendu d'un confrère")
+    void listeDesComptesRendus() {
         var reponse = page(MEDECIN, "/reports?size=100", COMPTES_RENDUS);
         assertThat(reponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         List<UUID> demandesVues = reponse.getBody().data().content().stream()
                 .map(ReportResponseDto::testOrderId).toList();
-        assertThat(demandesVues).contains(laSienne.getId()).doesNotContain(celleDUnConfrere.getId());
+        assertThat(demandesVues).contains(laSienne.getId(), celleDUnConfrere.getId());
+    }
 
-        List<UUID> tout = page(ADMIN, "/reports?size=100", COMPTES_RENDUS)
-                .getBody().data().content().stream().map(ReportResponseDto::testOrderId).toList();
-        assertThat(tout).contains(laSienne.getId(), celleDUnConfrere.getId());
+    @Test
+    @DisplayName("GET /reports/{id} : la fiche du compte rendu d'un confrère s'ouvre")
+    void ficheDuCompteRenduDUnConfrere() {
+        ResponseEntity<String> fiche = rest.exchange("http://localhost:" + port + "/api/v1/reports/" + compteRenduDuConfrere.getId(),
+                HttpMethod.GET, connecte(MEDECIN), String.class);
+        assertThat(fiche.getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
+
+    @Test
+    @DisplayName("GET /test-orders/myspace/orders : Mon espace reste borné aux demandes du médecin")
+    void monEspaceResteBorne() {
+        var reponse = page(MEDECIN, "/test-orders/myspace/orders?size=100", DEMANDES);
+        assertThat(reponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        List<UUID> ids = reponse.getBody().data().content().stream().map(TestOrderResponseDto::id).toList();
+        assertThat(ids).contains(laSienne.getId()).doesNotContain(celleDUnConfrere.getId());
+    }
+
+    /**
+     * Les trois autres lectures de comptes rendus portaient le même fragment SQL,
+     * retiré par concaténation de blocs de texte : on s'assure qu'elles
+     * s'exécutent toujours sur un vrai PostgreSQL. La deuxième page d'une ligne
+     * oblige Spring Data à lancer aussi la requête de comptage.
+     */
+    @Test
+    @DisplayName("GET /reports/suivi/list, /search-global, /list : les requêtes et leur comptage s'exécutent")
+    void autresLecturesDesComptesRendus() {
+        for (String route : List.of("/reports/suivi/list", "/reports/search-global", "/reports/list")) {
+            ResponseEntity<String> reponse = rest.exchange("http://localhost:" + port + "/api/v1" + route + "?page=1&size=1",
+                    HttpMethod.GET, connecte(MEDECIN), String.class);
+            assertThat(reponse.getStatusCode()).as(route).isEqualTo(HttpStatus.OK);
+        }
     }
 }

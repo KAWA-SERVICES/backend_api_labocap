@@ -155,9 +155,6 @@ public class TestOrderSpecification {
             if (filter.getTypeOrderId() != null) {
                 predicates.add(cb.equal(root.get("typeOrder").get("id"), filter.getTypeOrderId()));
             }
-            if (filter.getMedecinId() != null) {
-                predicates.add(confieeA(filter.getMedecinId(), root, query, cb));
-            }
 
             return cb.and(predicates.toArray(new Predicate[0]));
         };
@@ -171,28 +168,6 @@ public class TestOrderSpecification {
      * seul ne replie pas les accents : chaque recherche ne verrait que sa propre
      * variante, ce qui a valu au laboratoire des examens réputés introuvables.</p>
      */
-    /**
-     * La demande est confiée à ce médecin : affectation directe, ou lot en
-     * cours dont il est le destinataire (une demande reprise par un confrère
-     * sort de la file de celui qui l'avait).
-     */
-    private static Predicate confieeA(UUID medecinId,
-                                      jakarta.persistence.criteria.Root<TestOrder> root,
-                                      jakarta.persistence.criteria.CriteriaQuery<?> query,
-                                      jakarta.persistence.criteria.CriteriaBuilder cb) {
-        jakarta.persistence.criteria.Subquery<UUID> lots = query.subquery(UUID.class);
-        var detail = lots.from(TestOrderAssignmentDetail.class);
-        lots.select(detail.get("id")).where(
-                cb.equal(detail.get("testOrder"), root),
-                cb.isNull(detail.get("remplaceeLe")),
-                cb.isNull(detail.get("deletedAt")),
-                cb.equal(detail.get("testOrderAssignment").get("user").get("id"), medecinId));
-        return cb.or(
-                cb.equal(root.get("attribuateDoctorId"), medecinId),
-                cb.equal(root.get("assignedToUserId"), medecinId),
-                cb.exists(lots));
-    }
-
     private static Predicate like(jakarta.persistence.criteria.CriteriaBuilder cb,
                                   jakarta.persistence.criteria.Expression<String> champ,
                                   String motif) {

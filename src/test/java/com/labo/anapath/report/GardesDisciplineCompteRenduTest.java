@@ -77,8 +77,6 @@ class GardesDisciplineCompteRenduTest {
     @DisplayName("ReportServiceImpl")
     class Service {
 
-        @Mock private com.labo.anapath.testorder.PerimetreDuMedecin perimetreDuMedecin;
-
         @Mock private ReportRepository reportRepository;
         @Mock private LogReportRepository logReportRepository;
         @Mock private TestOrderRepository testOrderRepository;

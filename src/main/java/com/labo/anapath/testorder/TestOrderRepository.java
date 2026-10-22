@@ -721,46 +721,4 @@ public interface TestOrderRepository extends JpaRepository<TestOrder, UUID>, Jpa
             @Param("depuis") java.time.LocalDateTime depuis,
             @Param("jusqua") java.time.LocalDateTime jusqua,
             Pageable pageable);
-
-    /**
-     * Le même index, borné aux demandes confiées à un médecin (affectation
-     * directe ou lot en cours) — voir {@code PerimetreDuMedecin}. Une seconde
-     * requête plutôt qu'un paramètre facultatif : PostgreSQL ne sait pas typer
-     * un paramètre qui n'apparaît que dans un {@code IS NULL}.
-     */
-    @Query(value = """
-            SELECT new com.labo.anapath.testorder.EntreeDIndexDto(
-                     t.id, t.code,
-                     CONCAT(COALESCE(p.firstname, ''), ' ', COALESCE(p.lastname, '')),
-                     t.status)
-            FROM TestOrder t LEFT JOIN t.patient p
-            WHERE t.branchId = :branchId
-              AND t.deletedAt IS NULL
-              AND t.status <> com.labo.anapath.testorder.TestOrderStatus.DELIVERED
-              AND t.createdAt >= :depuis
-              AND t.createdAt <= :jusqua
-              AND (t.attribuateDoctorId = :medecinId OR t.assignedToUserId = :medecinId
-                   OR EXISTS (SELECT d.id FROM TestOrderAssignmentDetail d
-                              WHERE d.testOrder = t AND d.remplaceeLe IS NULL AND d.deletedAt IS NULL
-                                AND d.testOrderAssignment.user.id = :medecinId))
-            ORDER BY t.createdAt DESC, t.id DESC
-            """,
-            countQuery = """
-            SELECT COUNT(t) FROM TestOrder t
-            WHERE t.branchId = :branchId
-              AND t.deletedAt IS NULL
-              AND t.status <> com.labo.anapath.testorder.TestOrderStatus.DELIVERED
-              AND t.createdAt >= :depuis
-              AND t.createdAt <= :jusqua
-              AND (t.attribuateDoctorId = :medecinId OR t.assignedToUserId = :medecinId
-                   OR EXISTS (SELECT d.id FROM TestOrderAssignmentDetail d
-                              WHERE d.testOrder = t AND d.remplaceeLe IS NULL AND d.deletedAt IS NULL
-                                AND d.testOrderAssignment.user.id = :medecinId))
-            """)
-    Page<EntreeDIndexDto> indexPourLeMobileDuMedecin(
-            @Param("branchId") UUID branchId,
-            @Param("depuis") java.time.LocalDateTime depuis,
-            @Param("jusqua") java.time.LocalDateTime jusqua,
-            @Param("medecinId") UUID medecinId,
-            Pageable pageable);
 }

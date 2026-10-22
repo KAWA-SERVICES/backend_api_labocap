@@ -77,7 +77,6 @@ public class TestOrderServiceImpl implements TestOrderService {
 
     private final TestOrderRepository testOrderRepository;
     private final FichierStockeRepository fichiers;
-    private final PerimetreDuMedecin perimetreDuMedecin;
     private final PatientRepository patientRepository;
     private final DoctorRepository doctorRepository;
     private final HospitalRepository hospitalRepository;
@@ -111,7 +110,6 @@ public class TestOrderServiceImpl implements TestOrderService {
     @Override
     @Transactional(readOnly = true)
     public PageResponse<TestOrderResponseDto> findAll(int page, int size, TestOrderFilterDto filter, UUID branchId) {
-        filter.setMedecinId(perimetreDuMedecin.medecinBorne());
         PageRequest pageRequest = PageRequest.of(page, size, Sort.by("createdAt").descending());
         Page<TestOrder> orderPage = testOrderRepository
                 .findAll(TestOrderSpecification.filter(branchId, filter), pageRequest);
@@ -156,7 +154,6 @@ public class TestOrderServiceImpl implements TestOrderService {
 
         PageRequest pageRequest = PageRequest.of(page, size, Sort.by("createdAt").descending());
 
-        filter.setMedecinId(perimetreDuMedecin.medecinBorne());
         Specification<TestOrder> spec = TestOrderSpecification.filter(branchId, filter)
                 .and(TestOrderSpecification.typeOrderIdIn(immunoTypeIds));
 
@@ -214,8 +211,6 @@ public class TestOrderServiceImpl implements TestOrderService {
     public TestOrderResponseDto findById(UUID id, UUID branchId) {
         TestOrder order = testOrderRepository.findByIdAndBranchId(id, branchId)
                 .orElseThrow(() -> new ResourceNotFoundException("Bon d'examen", id));
-        // Hors périmètre du médecin : introuvable, comme hors agence.
-        perimetreDuMedecin.exiger(order);
         TestOrderResponseDto dto = testOrderMapper.toResponseDto(order);
         Report report = reportRepository.findByTestOrderId(order.getId()).orElse(null);
         Invoice invoice = invoiceRepository.findByTestOrderId(order.getId()).orElse(null);
@@ -1466,13 +1461,9 @@ public class TestOrderServiceImpl implements TestOrderService {
         // le même ensemble, même si le comptoir enregistre entre-temps.
         java.time.LocalDateTime borne = jusqua != null ? jusqua : java.time.LocalDateTime.now();
 
-        UUID medecin = perimetreDuMedecin.medecinBorne();
         var pageable = org.springframework.data.domain.PageRequest.of(rang, parTranche);
-        Page<EntreeDIndexDto> tranche = medecin == null
-                ? testOrderRepository.indexPourLeMobile(
-                        branchId, borne.minusMonths(profondeur), borne, pageable)
-                : testOrderRepository.indexPourLeMobileDuMedecin(
-                        branchId, borne.minusMonths(profondeur), borne, medecin, pageable);
+        Page<EntreeDIndexDto> tranche = testOrderRepository.indexPourLeMobile(
+                branchId, borne.minusMonths(profondeur), borne, pageable);
 
         return new PageDIndexDto(
                 tranche.getContent(),

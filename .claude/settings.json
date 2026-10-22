@@ -1,0 +1,13 @@
+{
+  "enabledPlugins": {
+    "kawa@kawa": true
+  },
+  "extraKnownMarketplaces": {
+    "kawa": {
+      "source": {
+        "source": "github",
+        "repo": "KAWA-SERVICES/kawa-standards"
+      }
+    }
+  }
+}

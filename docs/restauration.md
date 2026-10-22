@@ -229,7 +229,7 @@ pour une base de quelques Go et quelques dizaines de Go de fichiers.
 
 ```bash
 # Docker + compose installés, puis :
-git clone https://github.com/serviceskawa/backend_api_labocap.git labo && cd labo
+git clone https://github.com/KAWA-SERVICES/backend_api_labocap.git labo && cd labo
 git checkout main
 cp .env.prod.example .env
 ```

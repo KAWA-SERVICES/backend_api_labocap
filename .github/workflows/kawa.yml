@@ -1,0 +1,17 @@
+# Standards KAWA — conventions copiées localement (dépôt public), voir conventions.yml.
+name: kawa
+
+on:
+  pull_request:
+    branches: [main, develop]
+    types: [opened, edited, synchronize, reopened]
+  push:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  conventions:
+    uses: ./.github/workflows/conventions.yml
