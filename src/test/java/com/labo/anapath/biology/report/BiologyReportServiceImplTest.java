@@ -266,7 +266,6 @@ class BiologyReportServiceImplTest {
                 // Périmètre de validation : ce test porte sur le cœur commun et
                 // non sur la règle par type d'examen. Un mock la laisse passer.
                 mock(com.labo.anapath.report.ServicePerimetreDeValidation.class),
-                mock(com.labo.anapath.testorder.PerimetreDuMedecin.class),
                 mock(com.labo.anapath.report.JournalDesRefus.class),
                 new ObjectMapper(),
                 mock(com.labo.anapath.report.ReportVersionRepository.class));

@@ -61,7 +61,6 @@ public class ReportServiceImpl implements ReportService {
     private final com.labo.anapath.mobile.ProvenanceRequete provenanceRequete;
     private final com.labo.anapath.testorder.TestOrderAssignmentDetailRepository assignmentDetailRepository;
     private final ServicePerimetreDeValidation perimetreDeValidation;
-    private final com.labo.anapath.testorder.PerimetreDuMedecin perimetreDuMedecin;
     private final JournalDesRefus journalDesRefus;
     /** Pour relire les étiquettes, rangées en tableau JSON sur la ligne d'affectation. */
     private final tools.jackson.databind.ObjectMapper objectMapper;
@@ -118,7 +117,7 @@ public class ReportServiceImpl implements ReportService {
         String searchParam = (search != null && !search.isBlank()) ? search.trim() : null;
         return PageResponse.of(reportRepository.findFilteredWithSearch(
                 branchId, month, year, doctorId, statusParam, searchParam,
-                disciplineOuDefaut(discipline).name(), perimetreDuMedecin.medecinBorne(),
+                disciplineOuDefaut(discipline).name(),
                 PageRequest.of(page, size))
                 .map(reportMapper::toResponseDto));
     }
@@ -181,10 +180,6 @@ public class ReportServiceImpl implements ReportService {
     @Transactional(readOnly = true)
     public ReportDetailDto findDetailById(UUID id, UUID branchId) {
         Report report = charger(id);
-        // Hors périmètre du médecin : introuvable aussi, pas interdit — le
-        // second message révélerait que le compte rendu existe.
-        perimetreDuMedecin.exiger(report);
-
         List<LogReport> logs = logReportRepository.findByReportIdOrderByCreatedAtDesc(id);
         List<ReportDetailDto.LogReportDto> logDtos = logs.stream()
                 .map(l -> new ReportDetailDto.LogReportDto(
@@ -419,7 +414,6 @@ public class ReportServiceImpl implements ReportService {
                 isUrgent, statusFilter,
                 Boolean.TRUE.equals(isLate) ? Boolean.TRUE : null,
                 disciplineOuDefaut(discipline).name(),
-                perimetreDuMedecin.medecinBorne(),
                 pageRequest);
 
         return PageResponse.of(resultPage.map(p -> new ReportSuiviRowDto(
@@ -1267,7 +1261,7 @@ public class ReportServiceImpl implements ReportService {
                 (dateBegin != null && !dateBegin.isBlank()) ? dateBegin : null,
                 (dateEnd != null && !dateEnd.isBlank()) ? dateEnd : null,
                 (content != null && !content.isBlank()) ? content : null,
-                isUrgent, perimetreDuMedecin.medecinBorne(), pageRequest);
+                isUrgent, pageRequest);
 
         var rows = result.stream().map(p -> new ReportGlobalSearchRowDto(
                 p.getReportId() != null ? UUID.fromString(p.getReportId()) : null,
@@ -1310,7 +1304,6 @@ public class ReportServiceImpl implements ReportService {
                 (dateBegin != null && !dateBegin.isBlank()) ? dateBegin : null,
                 (dateEnd != null && !dateEnd.isBlank()) ? dateEnd : null,
                 disciplineOuDefaut(discipline).name(),
-                perimetreDuMedecin.medecinBorne(),
                 pageRequest);
 
         var content = result.stream().map(p -> new ReportListDto(

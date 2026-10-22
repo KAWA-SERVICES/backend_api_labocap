@@ -38,8 +38,6 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class ReportServiceImplTest {
 
-    @Mock private com.labo.anapath.testorder.PerimetreDuMedecin perimetreDuMedecin;
-
     @Mock private ReportRepository reportRepository;
     @Mock private LogReportRepository logReportRepository;
     @Mock private TagRepository tagRepository;
