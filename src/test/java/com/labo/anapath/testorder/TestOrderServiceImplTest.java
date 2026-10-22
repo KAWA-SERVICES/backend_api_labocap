@@ -51,8 +51,6 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class TestOrderServiceImplTest {
 
-    @Mock private com.labo.anapath.testorder.PerimetreDuMedecin perimetreDuMedecin;
-
     @Mock private TestOrderRepository testOrderRepository;
     @Mock private com.labo.anapath.common.storage.FichierStockeRepository fichiers;
     @Mock private PatientRepository patientRepository;

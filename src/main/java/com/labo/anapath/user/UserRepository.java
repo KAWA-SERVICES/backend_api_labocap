@@ -100,18 +100,6 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     boolean isSuperAdmin(@Param("userId") UUID userId);
 
     /**
-     * Médecin dont la vue se borne à ses dossiers : rôle {@code docteur} sans
-     * rôle d'administration à côté — voir {@code PerimetreDuMedecin}.
-     */
-    @Query("""
-            SELECT COUNT(u) > 0 FROM User u JOIN u.roles r
-            WHERE u.id = :userId AND r.slug = 'docteur'
-              AND NOT EXISTS (SELECT 1 FROM User a JOIN a.roles ra
-                              WHERE a.id = :userId AND ra.slug IN ('super-admin', 'admin'))
-            """)
-    boolean estMedecinBorne(@Param("userId") UUID userId);
-
-    /**
      * Dashboard — utilisateurs connectés.
      *
      * Parité Laravel : {@code users->where('is_connect', 1)->whereDate('updated_at', today)}.
