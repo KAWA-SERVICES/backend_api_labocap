@@ -25,7 +25,7 @@ import java.util.concurrent.atomic.LongAdder;
 @Component
 public class CompteurDAlertes {
 
-    public enum Type { ECHEC_DE_CONNEXION, VERROUILLAGE, ERREUR_SERVEUR }
+    public enum Type { ECHEC_DE_CONNEXION, VERROUILLAGE, ERREUR_SERVEUR, LIEN_DE_FACTURE_REFUSE }
 
     /** Au-delà, les minutes sont oubliées : la plus longue fenêtre de seuil est d'une heure. */
     static final long MINUTES_CONSERVEES = 60;
@@ -46,6 +46,11 @@ public class CompteurDAlertes {
     /** Compte verrouillé après trop de codes faux. */
     public void verrouillage() {
         compter(Type.VERROUILLAGE, minuteCourante());
+    }
+
+    /** Lien public de facture inconnu ou expiré : en rafale, quelqu'un essaie des jetons. */
+    public void lienDeFactureRefuse() {
+        compter(Type.LIEN_DE_FACTURE_REFUSE, minuteCourante());
     }
 
     /** Réponse HTTP de statut 500 ou plus. */

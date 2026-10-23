@@ -110,4 +110,26 @@ class SurveillanceDesSeuilsTest {
 
         verify(emailService, times(1)).sendAlerteSupervision(any(), argThat(s -> s.contains("erreurs serveur")), any());
     }
+
+    @Test
+    @DisplayName("60 liens de facture refusés en 10 minutes : courriel au prestataire seul")
+    void essaiDeJetons() {
+        for (int i = 0; i < 60; i++) compteur.lienDeFactureRefuse();
+
+        surveillance.evaluer();
+
+        verify(emailService).sendAlerteSupervision(eq(List.of(PRESTATAIRE)),
+                argThat(s -> s.contains("60 liens de facture refusés")), any());
+    }
+
+    @Test
+    @DisplayName("quelques liens expirés : pas d'alerte")
+    void quelquesLiensExpires_silence() {
+        for (int i = 0; i < 5; i++) compteur.lienDeFactureRefuse();
+
+        surveillance.evaluer();
+
+        verify(emailService, never()).sendAlerteSupervision(any(),
+                argThat(s -> s.contains("liens de facture")), any());
+    }
 }

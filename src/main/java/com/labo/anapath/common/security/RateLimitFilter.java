@@ -53,6 +53,9 @@ public class RateLimitFilter extends OncePerRequestFilter {
     /** Préfixe des liens publics de téléchargement de facture. */
     private static final String CHEMIN_FACTURE_PUBLIQUE = "/api/v1/public/invoices/";
 
+    /** Adresse courte du même lien, celle des SMS. */
+    private static final String CHEMIN_FACTURE_COURT = "/f/";
+
     // ponytail: en mémoire, par instance ; un cache partagé si l'API tourne un jour en plusieurs copies.
     private final Map<String, Bucket> buckets = new ConcurrentHashMap<>();
     private final Map<String, Bucket> bucketsFacture = new ConcurrentHashMap<>();
@@ -87,7 +90,8 @@ public class RateLimitFilter extends OncePerRequestFilter {
                 response.getWriter().write("{\"success\":false,\"message\":\"Trop de tentatives. Réessayez dans quelques minutes.\"}");
                 return;
             }
-        } else if (chemin.startsWith(CHEMIN_FACTURE_PUBLIQUE) && "GET".equals(request.getMethod())) {
+        } else if ((chemin.startsWith(CHEMIN_FACTURE_PUBLIQUE) || chemin.startsWith(CHEMIN_FACTURE_COURT))
+                && "GET".equals(request.getMethod())) {
             String ip = request.getRemoteAddr();
             Bucket bucket = bucketsFacture.computeIfAbsent(ip, k -> newBucketFacture());
             if (!bucket.tryConsume(1)) {

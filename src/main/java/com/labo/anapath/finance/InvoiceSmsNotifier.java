@@ -80,7 +80,7 @@ public class InvoiceSmsNotifier {
         try {
             String lien = shareLinkService.urlDeTelechargement(invoice);
             String message = smsTemplates.smsFacture(
-                    invoice.getBranchId(), invoice.getCode(), lien);
+                    invoice.getBranchId(), invoice.getCode(), codeDeLaDemande(invoice), lien);
             // Clé d'idempotence stable : l'identifiant de la facture. Deux
             // événements pour la même pièce ne doivent produire qu'un envoi, et
             // qu'une facturation.
@@ -112,5 +112,10 @@ public class InvoiceSmsNotifier {
         }
         String telephone = patient.getTelephone1();
         return (telephone != null && !telephone.isBlank()) ? telephone : patient.getTelephone2();
+    }
+
+    /** Code de la demande d'examen de la facture, ou nul sans demande. */
+    private static String codeDeLaDemande(Invoice invoice) {
+        return invoice.getTestOrder() != null ? invoice.getTestOrder().getCode() : null;
     }
 }

@@ -45,4 +45,18 @@ class RateLimitFilterTest {
         assertThat(statut("/api/v1/auth/forgot-password", "9.9.9.9", null)).isEqualTo(200);
         assertThat(statut("/api/v1/mobile/login", "9.9.9.9", null)).isEqualTo(200);
     }
+
+    @Test
+    void lienCourtDeFactureEstLimiteCommeLAncien() throws Exception {
+        // Au-delà de 30 ouvertures par minute depuis une même adresse, refus.
+        int dernier = 200;
+        for (int i = 0; i < 31; i++) {
+            MockHttpServletRequest requete = new MockHttpServletRequest("GET", "/f/jeton" + i);
+            requete.setRemoteAddr("7.7.7.7");
+            MockHttpServletResponse reponse = new MockHttpServletResponse();
+            filtre.doFilter(requete, reponse, new MockFilterChain());
+            dernier = reponse.getStatus();
+        }
+        assertThat(dernier).isEqualTo(429);
+    }
 }
