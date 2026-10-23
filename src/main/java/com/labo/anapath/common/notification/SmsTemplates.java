@@ -3,6 +3,7 @@ package com.labo.anapath.common.notification;
 import com.labo.anapath.setting.SettingApp;
 import com.labo.anapath.setting.SettingAppRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -24,6 +25,7 @@ import java.util.UUID;
  */
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class SmsTemplates {
 
     /** Clé {@code setting_apps} du SMS annonçant un résultat disponible au retrait. */
@@ -59,13 +61,18 @@ public class SmsTemplates {
             + "pendant nos heures d'ouverture. Merci de votre confiance.";
 
     /**
-     * Texte livré du SMS de facture. Volontairement court : au-delà de
-     * 160 caractères, l'opérateur facture plusieurs segments et certains
-     * téléphones tronquent l'affichage, ce qui couperait le lien.
+     * Texte livré du SMS de facture, envoyé à la normalisation. Sans accent et
+     * sous {@link #SMS_UNITE} caractères : une seule unité facturée, et un lien
+     * que l'affichage ne coupe pas.
      */
     public static final String DEFAUT_SMS_FACTURE =
-            "Bonjour, votre facture {code} du Centre Adechina d'Anatomie Pathologique "
-            + "est disponible : {lien}";
+            "Dossier {demande}: resultat dans 3 semaines. Facture: {lien}";
+
+    /** Variante pour une facture sans demande d'examen (consultation, prestation). */
+    public static final String DEFAUT_SMS_FACTURE_SANS_DEMANDE = "Facture {code}: {lien}";
+
+    /** Caractères d'un SMS d'une seule unité, sans accent (alphabet GSM). */
+    static final int SMS_UNITE = 160;
 
     private final SettingAppRepository settingAppRepository;
 
@@ -89,15 +96,40 @@ public class SmsTemplates {
     }
 
     /**
-     * Le texte du SMS de facture, jetons {@code {code}} et {@code {lien}} remplacés.
+     * Le texte du SMS de facture : jetons {@code {code}}, {@code {demande}} et
+     * {@code {lien}} remplacés, accents retirés.
+     *
+     * <p>Sans accent parce qu'un seul caractère accentué fait passer le SMS en
+     * Unicode, où l'unité tombe à 70 caractères : le même texte coûterait deux
+     * SMS. Un texte paramétré qui dépasse malgré tout une unité est écarté au
+     * profit du texte livré — le lien, en fin de message, serait le premier
+     * coupé. Une facture sans demande d'examen reçoit sa variante courte.</p>
      *
      * @param branchId branche de la facture ; {@code null} accepté
      * @param code     code de la facture ; chaîne vide acceptée
+     * @param demande  code de la demande d'examen ; nul ou vide sans demande
      * @param lien     URL publique de téléchargement
      */
-    public String smsFacture(UUID branchId, String code, String lien) {
-        return remplacer(modele(CLE_SMS_FACTURE, branchId, DEFAUT_SMS_FACTURE),
-                Map.of("{code}", code == null ? "" : code, "{lien}", lien));
+    public String smsFacture(UUID branchId, String code, String demande, String lien) {
+        Map<String, String> jetons = Map.of("{code}", code == null ? "" : code,
+                "{demande}", demande == null ? "" : demande, "{lien}", lien);
+        if (demande == null || demande.isBlank()) {
+            return sansAccent(remplacer(DEFAUT_SMS_FACTURE_SANS_DEMANDE, jetons));
+        }
+        String texte = sansAccent(remplacer(modele(CLE_SMS_FACTURE, branchId, DEFAUT_SMS_FACTURE), jetons));
+        if (texte.length() > SMS_UNITE) {
+            log.warn("SMS facture paramétré trop long ({} caractères) : texte livré utilisé", texte.length());
+            texte = sansAccent(remplacer(DEFAUT_SMS_FACTURE, jetons));
+        }
+        return texte;
+    }
+
+    /** Lettres accentuées ramenées à leur base, tirets et guillemets typographiques à l'ASCII. */
+    static String sansAccent(String texte) {
+        return java.text.Normalizer.normalize(texte, java.text.Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "")
+                .replace('\u2014', '-').replace('\u2013', '-')
+                .replace('\u2019', '\'').replace('\u00A0', ' ');
     }
 
     /**

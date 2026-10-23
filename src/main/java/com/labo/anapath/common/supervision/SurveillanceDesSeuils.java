@@ -24,6 +24,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import static com.labo.anapath.common.supervision.CompteurDAlertes.Type.ECHEC_DE_CONNEXION;
 import static com.labo.anapath.common.supervision.CompteurDAlertes.Type.ERREUR_SERVEUR;
+import static com.labo.anapath.common.supervision.CompteurDAlertes.Type.LIEN_DE_FACTURE_REFUSE;
 import static com.labo.anapath.common.supervision.CompteurDAlertes.Type.VERROUILLAGE;
 
 /**
@@ -47,6 +48,11 @@ public class SurveillanceDesSeuils {
     static final int SEUIL_ECHECS_DE_CONNEXION = 20;
     static final int SEUIL_VERROUILLAGES = 5;
     static final int SEUIL_ERREURS_SERVEUR = 10;
+    /**
+     * Un patient qui se trompe de lien, ou rouvre un lien expiré, fait quelques
+     * refus ; cinquante en dix minutes, c'est quelqu'un qui essaie des jetons.
+     */
+    static final int SEUIL_LIENS_DE_FACTURE_REFUSES = 50;
     static final int SEUIL_DISQUE_LIBRE_POURCENT = 15;
     static final Duration SILENCE_ENTRE_DEUX_ENVOIS = Duration.ofHours(1);
 
@@ -92,6 +98,14 @@ public class SurveillanceDesSeuils {
                     "[Labo] " + erreurs + " erreurs serveur en 5 minutes",
                     erreurs + " réponses HTTP 5xx en 5 minutes (seuil : " + SEUIL_ERREURS_SERVEUR
                             + "). Consulter le journal applicatif.");
+        }
+        long liensRefuses = compteur.maximumSur(LIEN_DE_FACTURE_REFUSE, Duration.ofMinutes(10));
+        if (liensRefuses > SEUIL_LIENS_DE_FACTURE_REFUSES) {
+            alerter("liens-de-facture", prestataire(),
+                    "[Labo] " + liensRefuses + " liens de facture refusés en 10 minutes",
+                    liensRefuses + " ouvertures de lien de facture inconnu ou expiré en 10 minutes (seuil : "
+                            + SEUIL_LIENS_DE_FACTURE_REFUSES + "). Possible essai de jetons : "
+                            + "consulter les journaux nginx des adresses /f/.");
         }
         for (Path volume : volumesSurveilles) {
             verifierLeDisque(volume);

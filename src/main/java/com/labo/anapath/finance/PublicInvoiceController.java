@@ -9,7 +9,6 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.nio.charset.StandardCharsets;
@@ -33,13 +32,14 @@ import java.util.Optional;
  * personne ne sait lire ; une phrase en français indique quoi faire.</p>
  */
 @RestController
-@RequestMapping("/api/v1/public/invoices")
 @RequiredArgsConstructor
 @Slf4j
 public class PublicInvoiceController {
 
     private final InvoiceShareLinkService shareLinkService;
     private final InvoicePdfService invoicePdfService;
+    private final FluidInvoiceService fluidInvoiceService;
+    private final com.labo.anapath.common.supervision.CompteurDAlertes compteurDAlertes;
 
     /**
      * Sert le PDF de la facture désignée par le jeton.
@@ -47,12 +47,15 @@ public class PublicInvoiceController {
      * @param token jeton du lien public
      * @return le PDF, ou une page d'explication si le jeton est inconnu ou périmé
      */
-    @GetMapping("/{token}")
+    // « /f/ » est l'adresse courte des SMS ; l'ancienne reste servie pour les
+    // liens déjà envoyés.
+    @GetMapping({"/f/{token}", "/api/v1/public/invoices/{token}"})
     public ResponseEntity<byte[]> telecharger(@PathVariable String token) {
         Optional<Invoice> facture;
         try {
             facture = shareLinkService.resoudre(token);
         } catch (InvoiceShareLinkService.LienExpireException e) {
+            compteurDAlertes.lienDeFactureRefuse();
             return page(HttpStatus.GONE,
                     "Lien expiré",
                     "Ce lien de téléchargement n'est plus valable. "
@@ -62,6 +65,7 @@ public class PublicInvoiceController {
         if (facture.isEmpty()) {
             // Volontairement identique à une réponse « rien ici » : distinguer un
             // jeton inexistant d'un jeton révoqué renseignerait qui les essaie.
+            compteurDAlertes.lienDeFactureRefuse();
             return page(HttpStatus.NOT_FOUND,
                     "Lien introuvable",
                     "Ce lien de téléchargement n'existe pas. "
@@ -71,7 +75,7 @@ public class PublicInvoiceController {
         Invoice invoice = facture.get();
         byte[] pdf;
         try {
-            pdf = invoicePdfService.generatePdf(invoice.getId(), invoice.getBranchId());
+            pdf = document(invoice);
         } catch (RuntimeException e) {
             log.error("Facture {} : échec de génération du PDF public : {}",
                     invoice.getId(), e.getMessage());
@@ -105,5 +109,26 @@ public class PublicInvoiceController {
         return ResponseEntity.status(statut)
                 .header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_HTML_VALUE + ";charset=UTF-8")
                 .body(html.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /**
+     * La facture normalisée FluidInvoice quand elle existe — celle qui fait foi,
+     * avec le QR fiscal et le QR de la demande —, sinon la facture LabSys.
+     *
+     * <p>Le SMS part au premier encaissement ou à la normalisation : un lien reçu
+     * avant la normalisation sert la facture LabSys, puis la version normalisée
+     * dès qu'elle existe. Si FluidInvoice ne répond pas, le patient reçoit quand
+     * même sa facture plutôt qu'une page d'erreur.</p>
+     */
+    private byte[] document(Invoice invoice) {
+        if (invoice.getFluidinvoiceId() != null) {
+            try {
+                return fluidInvoiceService.telechargerDocument(invoice.getId(), invoice.getBranchId());
+            } catch (RuntimeException e) {
+                log.warn("Facture {} : document normalisé indisponible, facture LabSys servie : {}",
+                        invoice.getId(), e.getMessage());
+            }
+        }
+        return invoicePdfService.generatePdf(invoice.getId(), invoice.getBranchId());
     }
 }

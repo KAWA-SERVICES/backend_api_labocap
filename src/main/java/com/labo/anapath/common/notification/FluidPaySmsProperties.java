@@ -30,7 +30,7 @@ import org.springframework.util.StringUtils;
  *   fluidpay:
  *     sms:
  *       enabled: true
- *       base-url: https://app.fluidpay.link
+ *       base-url: https://bulk.fluidpay.link
  *       api-key: <jeton Bearer du tableau de bord FluidPay>
  *       encryption-key: <clé de chiffrement, 32 caractères>
  *       provider: ourvoice
@@ -57,7 +57,7 @@ public class FluidPaySmsProperties {
     private boolean enabled = true;
 
     /** Racine de l'API, sans barre oblique finale. */
-    private String baseUrl = "https://app.fluidpay.link";
+    private String baseUrl = "https://bulk.fluidpay.link";
 
     /** Jeton Bearer du compte FluidPay. Jamais en dur : il autorise des envois facturés. */
     private String apiKey;

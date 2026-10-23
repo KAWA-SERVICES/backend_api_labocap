@@ -79,19 +79,18 @@ class SmsTemplatesTest {
         when(settingAppRepository.findByKeyInOrderByCreatedAtAsc(anyCollection()))
                 .thenReturn(List.of());
 
-        assertThat(templates.smsFacture(BRANCHE, "FA260001", "https://x/y"))
-                .contains("FA260001")
-                .contains("https://x/y");
+        assertThat(templates.smsFacture(BRANCHE, "FA260001", "EX26-0001", "https://x/y"))
+                .isEqualTo("Dossier EX26-0001: resultat dans 3 semaines. Facture: https://x/y");
     }
 
     @Test
-    @DisplayName("jetons {code} et {lien} remplacés dans le texte paramétré")
+    @DisplayName("jetons {code} et {lien} remplacés dans le texte paramétré, tiret typographique ramené à l'ASCII")
     void jetons_sontRemplaces() {
         when(settingAppRepository.findByKeyAndBranchId(SmsTemplates.CLE_SMS_FACTURE, BRANCHE))
                 .thenReturn(Optional.of(setting("Facture {code} : {lien} — merci")));
 
-        assertThat(templates.smsFacture(BRANCHE, "FA260007", "https://api.caap.bj/api/v1/public/invoices/jeton"))
-                .isEqualTo("Facture FA260007 : https://api.caap.bj/api/v1/public/invoices/jeton — merci");
+        assertThat(templates.smsFacture(BRANCHE, "FA260007", "EX26-0007", "https://api.caap.bj/f/jeton"))
+                .isEqualTo("Facture FA260007 : https://api.caap.bj/f/jeton - merci");
     }
 
     @Test
@@ -100,8 +99,8 @@ class SmsTemplatesTest {
         when(settingAppRepository.findByKeyAndBranchId(SmsTemplates.CLE_SMS_FACTURE, BRANCHE))
                 .thenReturn(Optional.of(setting("Remise 100% appliquée. Facture {code} : {lien}")));
 
-        assertThat(templates.smsFacture(BRANCHE, "FA260008", "https://x/y"))
-                .isEqualTo("Remise 100% appliquée. Facture FA260008 : https://x/y");
+        assertThat(templates.smsFacture(BRANCHE, "FA260008", "EX26-0008", "https://x/y"))
+                .isEqualTo("Remise 100% appliquee. Facture FA260008 : https://x/y");
     }
 
     @Test
@@ -110,8 +109,47 @@ class SmsTemplatesTest {
         when(settingAppRepository.findByKeyAndBranchId(SmsTemplates.CLE_SMS_FACTURE, BRANCHE))
                 .thenReturn(Optional.of(setting("Facture {code} : {lien}")));
 
-        assertThat(templates.smsFacture(BRANCHE, null, "https://x/y"))
+        assertThat(templates.smsFacture(BRANCHE, null, "EX26-0009", "https://x/y"))
                 .isEqualTo("Facture  : https://x/y")
                 .doesNotContain("null");
+    }
+
+    @Test
+    @DisplayName("texte livré : une seule unité SMS, sans accent, avec un lien court réaliste")
+    void texteLivre_uneUniteSansAccent() {
+        when(settingAppRepository.findByKeyInOrderByCreatedAtAsc(anyCollection())).thenReturn(List.of());
+
+        String sms = templates.smsFacture(BRANCHE, "FA260001", "EX26-0001", "https://api.caap.bj/f/Ab3dE5fG7hJ9");
+
+        assertThat(sms).isEqualTo("Dossier EX26-0001: resultat dans 3 semaines. Facture: https://api.caap.bj/f/Ab3dE5fG7hJ9")
+                .hasSizeLessThanOrEqualTo(SmsTemplates.SMS_UNITE)
+                .matches("\\p{ASCII}+");
+    }
+
+    @Test
+    @DisplayName("texte paramétré accentué → accents retirés, pour rester à une unité")
+    void texteAccentue_accentsRetires() {
+        when(settingAppRepository.findByKeyAndBranchId(SmsTemplates.CLE_SMS_FACTURE, BRANCHE))
+                .thenReturn(Optional.of(setting("Dossier {demande} : résultat prêt à récupérer. {lien}")));
+
+        assertThat(templates.smsFacture(BRANCHE, "FA260001", "EX26-0001", "https://x/y"))
+                .isEqualTo("Dossier EX26-0001 : resultat pret a recuperer. https://x/y");
+    }
+
+    @Test
+    @DisplayName("texte paramétré au-delà d'une unité → texte livré")
+    void texteTropLong_texteLivre() {
+        when(settingAppRepository.findByKeyAndBranchId(SmsTemplates.CLE_SMS_FACTURE, BRANCHE))
+                .thenReturn(Optional.of(setting("x".repeat(200) + " {lien}")));
+
+        assertThat(templates.smsFacture(BRANCHE, "FA260001", "EX26-0001", "https://x/y"))
+                .isEqualTo("Dossier EX26-0001: resultat dans 3 semaines. Facture: https://x/y");
+    }
+
+    @Test
+    @DisplayName("facture sans demande d'examen → variante courte avec le code de facture")
+    void sansDemande_varianteCourte() {
+        assertThat(templates.smsFacture(BRANCHE, "FA260003", null, "https://x/y"))
+                .isEqualTo("Facture FA260003: https://x/y");
     }
 }

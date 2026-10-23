@@ -22,11 +22,12 @@ import java.util.Optional;
 public class InvoiceShareLinkService {
 
     /**
-     * Nombre d'octets aléatoires du jeton. 24 octets font 32 caractères en
-     * base64url : assez court pour tenir dans un SMS, assez long pour qu'un
-     * tirage au hasard soit hors de portée.
+     * Nombre d'octets aléatoires du jeton. 9 octets font 12 caractères en
+     * base64url, soit 72 bits : le SMS tient en une unité, et un tirage au hasard
+     * reste hors de portée — d'autant que le lien expire et que la route est
+     * limitée en débit. Les jetons plus longs déjà envoyés restent valables.
      */
-    private static final int OCTETS_JETON = 24;
+    private static final int OCTETS_JETON = 9;
 
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final Base64.Encoder ENCODEUR = Base64.getUrlEncoder().withoutPadding();
@@ -42,7 +43,7 @@ public class InvoiceShareLinkService {
     private String publicBaseUrl;
 
     /** Durée de vie du lien, en jours. */
-    @Value("${app.invoice.share-link.ttl-days:60}")
+    @Value("${app.invoice.share-link.ttl-days:90}")
     private int ttlJours;
 
     /**
@@ -99,7 +100,8 @@ public class InvoiceShareLinkService {
         String base = publicBaseUrl.endsWith("/")
                 ? publicBaseUrl.substring(0, publicBaseUrl.length() - 1)
                 : publicBaseUrl;
-        return base + "/api/v1/public/invoices/" + token;
+        // Chemin court : le lien occupe la moitié du SMS.
+        return base + "/f/" + token;
     }
 
     /** Jeton connu mais périmé : le lien a existé, il ne sert plus. */

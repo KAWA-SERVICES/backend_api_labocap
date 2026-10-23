@@ -107,7 +107,7 @@ public class SecurityConfig {
                         // Facture téléchargée depuis le lien reçu par SMS. Le client
                         // n'a pas de compte : l'autorisation tient dans le jeton de
                         // l'URL, tiré au sort et expirant — voir PublicInvoiceController.
-                        .requestMatchers(HttpMethod.GET, "/api/v1/public/invoices/*").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/public/invoices/*", "/f/*").permitAll()
                         // Application mobile : deux chemins seulement s'ouvrent sans
                         // jeton, et chacun exige un secret remis hors ligne — le code
                         // d'enrôlement délivré par un administrateur, puis le PIN du
