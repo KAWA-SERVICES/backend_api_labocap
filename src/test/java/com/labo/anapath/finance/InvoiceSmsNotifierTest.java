@@ -56,7 +56,7 @@ class InvoiceSmsNotifierTest {
         Invoice invoice = factureAvecPatient("97000001");
         when(invoiceRepository.findById(INVOICE_ID)).thenReturn(Optional.of(invoice));
         when(shareLinkService.urlDeTelechargement(invoice)).thenReturn(LIEN);
-        when(smsTemplates.smsFacture(any(), eq("FA260001"), eq(LIEN)))
+        when(smsTemplates.smsFacture(any(), eq("FA260001"), any(), eq(LIEN)))
                 .thenReturn("Votre facture FA260001 est disponible : " + LIEN);
 
         notifier.onInvoiceValidated(new InvoiceValidatedEvent(INVOICE_ID));
@@ -75,7 +75,7 @@ class InvoiceSmsNotifierTest {
         Invoice invoice = factureAvecPatient("97000001");
         when(invoiceRepository.findById(INVOICE_ID)).thenReturn(Optional.of(invoice));
         when(shareLinkService.urlDeTelechargement(invoice)).thenReturn(LIEN);
-        when(smsTemplates.smsFacture(any(), any(), any())).thenReturn("message");
+        when(smsTemplates.smsFacture(any(), any(), any(), any())).thenReturn("message");
 
         notifier.onInvoiceValidated(new InvoiceValidatedEvent(INVOICE_ID));
 
@@ -89,6 +89,7 @@ class InvoiceSmsNotifierTest {
         patient.setTelephone1("97000002");
         TestOrder order = new TestOrder();
         order.setPatient(patient);
+        order.setCode("EX26-0002");
 
         Invoice invoice = new Invoice();
         invoice.setId(INVOICE_ID);
@@ -97,11 +98,13 @@ class InvoiceSmsNotifierTest {
 
         when(invoiceRepository.findById(INVOICE_ID)).thenReturn(Optional.of(invoice));
         when(shareLinkService.urlDeTelechargement(invoice)).thenReturn(LIEN);
-        when(smsTemplates.smsFacture(any(), any(), any())).thenReturn("message");
+        when(smsTemplates.smsFacture(any(), any(), any(), any())).thenReturn("message");
 
         notifier.onInvoiceValidated(new InvoiceValidatedEvent(INVOICE_ID));
 
         verify(smsSender).envoyer(eq("22997000002"), anyString(), anyString(), any());
+        // Le code de la demande part dans le texte du SMS.
+        verify(smsTemplates).smsFacture(any(), eq("FA260002"), eq("EX26-0002"), eq(LIEN));
     }
 
     @Test
@@ -124,7 +127,7 @@ class InvoiceSmsNotifierTest {
         Invoice invoice = factureAvecPatient("97000004");
         when(invoiceRepository.findById(INVOICE_ID)).thenReturn(Optional.of(invoice));
         when(shareLinkService.urlDeTelechargement(invoice)).thenReturn(LIEN);
-        when(smsTemplates.smsFacture(any(), any(), any())).thenReturn("message");
+        when(smsTemplates.smsFacture(any(), any(), any(), any())).thenReturn("message");
         doThrow(new ExternalApiException("Aucune passerelle SMS configurée"))
                 .when(smsSender).envoyer(any(), any(), any(), any());
 
@@ -140,7 +143,7 @@ class InvoiceSmsNotifierTest {
         Invoice invoice = factureAvecPatient("97000005");
         when(invoiceRepository.findById(INVOICE_ID)).thenReturn(Optional.of(invoice));
         when(shareLinkService.urlDeTelechargement(invoice)).thenReturn(LIEN);
-        when(smsTemplates.smsFacture(any(), any(), any())).thenReturn("message");
+        when(smsTemplates.smsFacture(any(), any(), any(), any())).thenReturn("message");
         doThrow(new ExternalApiException("FluidPay injoignable"))
                 .when(smsSender).envoyer(any(), any(), any(), any());
 
@@ -168,7 +171,7 @@ class InvoiceSmsNotifierTest {
         Invoice invoice = factureAvecPatient("97000001");
         when(invoiceRepository.findById(INVOICE_ID)).thenReturn(Optional.of(invoice));
         when(shareLinkService.urlDeTelechargement(invoice)).thenReturn(LIEN);
-        when(smsTemplates.smsFacture(any(), any(), any())).thenReturn("message");
+        when(smsTemplates.smsFacture(any(), any(), any(), any())).thenReturn("message");
 
         notifier.onInvoiceValidated(new InvoiceValidatedEvent(INVOICE_ID));
         assertThat(invoice.getShareSmsSentAt()).isNotNull();

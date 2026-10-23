@@ -89,7 +89,7 @@ app:
       # Durée de vie du lien public de facture. Un SMS reste indéfiniment dans le
       # téléphone de son destinataire : sans expiration, le lien deviendrait un
       # accès permanent à une pièce comptable.
-      ttl-days: ${INVOICE_SHARE_LINK_TTL_DAYS:60}
+      ttl-days: ${INVOICE_SHARE_LINK_TTL_DAYS:90}
   jwt:
     secret: ${JWT_SECRET}
     # Une session web s'éteint après trente minutes sans activité, une heure
@@ -237,14 +237,15 @@ app:
     from-name: ${MAIL_FROM_NAME:Labo AnaPath}
   fluidpay:
     sms:
-      # Passerelle SMS FluidPay (app.fluidpay.link), qui achemine via l'opérateur
+      # Passerelle SMS BulkPayment (bulk.fluidpay.link, même contrat que l'ancienne
+      # passerelle FluidPay), qui achemine via l'opérateur
       # désigné ci-dessous. Distincte de app.fluidinvoice, qui est la passerelle
       # fiscale : deux produits, deux domaines, deux clés.
       #
       # Activée par défaut, mais sans effet tant que la clé manque : les SMS
       # repartent alors par l'API OurVoice directe, comme avant la bascule.
       enabled: ${FLUIDPAY_SMS_ENABLED:true}
-      base-url: ${FLUIDPAY_SMS_BASE_URL:https://app.fluidpay.link}
+      base-url: ${FLUIDPAY_SMS_BASE_URL:https://bulk.fluidpay.link}
       # Jamais en dur : la clé autorise des envois facturés.
       api-key: ${FLUIDPAY_SMS_API_KEY:}
       # Clé de chiffrement, 32 caractères. Obligatoire : le serveur refuse une

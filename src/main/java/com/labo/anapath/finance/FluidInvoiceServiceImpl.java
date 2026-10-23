@@ -41,6 +41,7 @@ public class FluidInvoiceServiceImpl implements FluidInvoiceService {
     private final FinanceMapper financeMapper;
     private final ApplicationEventPublisher eventPublisher;
     private final InvoiceService invoiceService;
+    private final TamponDuDossier tamponDuDossier;
 
     @Override
     @Transactional
@@ -140,7 +141,30 @@ public class FluidInvoiceServiceImpl implements FluidInvoiceService {
             throw new InvalidOperationException(
                     "Cette facture n'a pas été normalisée par FluidInvoice.");
         }
-        return client.telechargerDocument(invoice.getFluidinvoiceId());
+        byte[] document = client.telechargerDocument(invoice.getFluidinvoiceId());
+        String codeDemande = codeDeDemandeATamponner(invoice);
+        return codeDemande == null ? document : tamponDuDossier.apposer(document, codeDemande);
+    }
+
+    /**
+     * Le code de la demande d'examen à porter en QR sur la facture normalisée,
+     * ou nul : seulement une facture de vente à un particulier (sans IFU), le
+     * papier que le patient présente au retrait de son compte rendu. Un
+     * établissement, un avoir ou une facture sans demande n'en ont pas l'usage.
+     */
+    private static String codeDeDemandeATamponner(Invoice invoice) {
+        if (invoice.getStatusInvoice() == STATUT_AVOIR || StringUtils.hasText(invoice.getClientIfu())
+                || invoice.getTestOrder() == null) {
+            return null;
+        }
+        try {
+            String code = invoice.getTestOrder().getCode();
+            return StringUtils.hasText(code) ? code : null;
+        } catch (jakarta.persistence.EntityNotFoundException e) {
+            // Demande supprimée depuis (suppression logique) : le proxy pointe
+            // dans le vide. Le document normalisé, lui, reste dû — sans QR.
+            return null;
+        }
     }
 
     // -------------------------------------------------------------------------

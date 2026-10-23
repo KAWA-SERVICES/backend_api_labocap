@@ -15,7 +15,6 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.context.ApplicationEventPublisher;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -48,9 +47,6 @@ class InvoiceServiceImplTest {
     @Mock private RefundReasonRepository refundReasonRepository;
     @Mock private SettingInvoiceRepository settingInvoiceRepository;
     @Mock private FinanceMapper financeMapper;
-    /** L'encaissement publie InvoiceValidatedEvent : sans ce mock, @InjectMocks
-     *  laisse le champ à null et markAsPaid lève un NullPointerException. */
-    @Mock private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks private InvoiceServiceImpl service;
 

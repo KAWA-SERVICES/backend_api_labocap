@@ -208,7 +208,7 @@ services:
       # ─── SMS par FluidPay ───────────────────────────────────────────────
       # Sans clé d'API ni clé de chiffrement, repli sur OurVoice (setting_apps).
       FLUIDPAY_SMS_ENABLED: ${FLUIDPAY_SMS_ENABLED:-true}
-      FLUIDPAY_SMS_BASE_URL: ${FLUIDPAY_SMS_BASE_URL:-https://app.fluidpay.link}
+      FLUIDPAY_SMS_BASE_URL: ${FLUIDPAY_SMS_BASE_URL:-https://bulk.fluidpay.link}
       FLUIDPAY_SMS_API_KEY: ${FLUIDPAY_SMS_API_KEY:-}
       FLUIDPAY_SMS_ENCRYPTION_KEY: ${FLUIDPAY_SMS_ENCRYPTION_KEY:-}
       FLUIDPAY_SMS_PROVIDER: ${FLUIDPAY_SMS_PROVIDER:-lafricamobile}
