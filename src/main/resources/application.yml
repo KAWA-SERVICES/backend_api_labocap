@@ -237,7 +237,7 @@ app:
     from-name: ${MAIL_FROM_NAME:Labo AnaPath}
   fluidpay:
     sms:
-      # Passerelle SMS BulkPayment (bulk.fluidpay.link, même contrat que l'ancienne
+      # Passerelle SMS BulkPayment (app.fluidpay.link, même contrat que l'ancienne
       # passerelle FluidPay), qui achemine via l'opérateur
       # désigné ci-dessous. Distincte de app.fluidinvoice, qui est la passerelle
       # fiscale : deux produits, deux domaines, deux clés.
@@ -245,7 +245,7 @@ app:
       # Activée par défaut, mais sans effet tant que la clé manque : les SMS
       # repartent alors par l'API OurVoice directe, comme avant la bascule.
       enabled: ${FLUIDPAY_SMS_ENABLED:true}
-      base-url: ${FLUIDPAY_SMS_BASE_URL:https://bulk.fluidpay.link}
+      base-url: ${FLUIDPAY_SMS_BASE_URL:https://app.fluidpay.link}
       # Jamais en dur : la clé autorise des envois facturés.
       api-key: ${FLUIDPAY_SMS_API_KEY:}
       # Clé de chiffrement, 32 caractères. Obligatoire : le serveur refuse une

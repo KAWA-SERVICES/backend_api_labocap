@@ -38,7 +38,7 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
  */
 class FluidPaySmsClientTest {
 
-    private static final String URL = "https://bulk.fluidpay.link/api/v1/sms";
+    private static final String URL = "https://app.fluidpay.link/api/v1/sms";
     private static final String CLE = "fluidpay-test-token";
     /** 32 caractères, comme la clé de chiffrement du tableau de bord. */
     private static final String CLE_CHIFFREMENT = "0123456789abcdef0123456789abcdef";
@@ -212,7 +212,7 @@ class FluidPaySmsClientTest {
     @Test
     @DisplayName("barre oblique finale de base-url tolérée")
     void baseUrlAvecBarreObliqueFinale() {
-        properties.setBaseUrl("https://bulk.fluidpay.link/");
+        properties.setBaseUrl("https://app.fluidpay.link/");
 
         assertThat(properties.urlEnvoi()).isEqualTo(URL);
     }
