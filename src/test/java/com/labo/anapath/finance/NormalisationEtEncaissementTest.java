@@ -55,7 +55,7 @@ class NormalisationEtEncaissementTest {
     void poser() {
         service = new FluidInvoiceServiceImpl(
                 invoiceRepository, client, new FluidInvoiceProperties(),
-                financeMapper, eventPublisher, invoiceService);
+                financeMapper, eventPublisher, invoiceService, new TamponDuDossier());
 
         facture = new Invoice();
         facture.setId(FACTURE);

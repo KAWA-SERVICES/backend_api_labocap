@@ -42,6 +42,7 @@ class FluidInvoiceServiceImplTest {
     @Mock private FinanceMapper financeMapper;
     @Mock private ApplicationEventPublisher eventPublisher;
     @Mock private InvoiceService invoiceService;
+    @Mock private TamponDuDossier tampon;
 
     private FluidInvoiceProperties properties;
     private FluidInvoiceServiceImpl service;
@@ -56,7 +57,7 @@ class FluidInvoiceServiceImplTest {
         properties.setApiKey("fni_test_xxx");
         service = new FluidInvoiceServiceImpl(
                 invoiceRepository, client, properties, financeMapper,
-                eventPublisher, invoiceService);
+                eventPublisher, invoiceService, tampon);
     }
 
     /** Un avoir portant une ligne, rattaché à l'originale fournie. */
@@ -205,5 +206,61 @@ class FluidInvoiceServiceImplTest {
                 .isInstanceOf(InvalidOperationException.class)
                 .hasMessageContaining("rattaché à aucune facture de vente");
         verify(client, never()).emettreAvoir(any(), anyString());
+    }
+
+    // -------------------------------------------------------------------------
+    // QR de la demande d'examen sur le document normalisé
+    // -------------------------------------------------------------------------
+
+    private static final UUID VENTE_ID = UUID.randomUUID();
+    private static final byte[] DOCUMENT = {1, 2, 3};
+
+    /** Facture de vente normalisée, à un particulier, avec demande EX26-0001. */
+    private Invoice venteNormalisee() {
+        com.labo.anapath.testorder.TestOrder demande = new com.labo.anapath.testorder.TestOrder();
+        demande.setCode("EX26-0001");
+        Invoice vente = new Invoice();
+        vente.setId(VENTE_ID);
+        vente.setBranchId(BRANCHE);
+        vente.setFluidinvoiceId("fi-1");
+        vente.setTestOrder(demande);
+        when(invoiceRepository.findByIdAndBranchId(VENTE_ID, BRANCHE)).thenReturn(Optional.of(vente));
+        when(client.telechargerDocument("fi-1")).thenReturn(DOCUMENT);
+        return vente;
+    }
+
+    @Test
+    @DisplayName("document normalisé d'un particulier → QR de la demande posé")
+    void documentDUnParticulier_tamponne() {
+        venteNormalisee();
+        byte[] tamponne = {9};
+        when(tampon.apposer(DOCUMENT, "EX26-0001")).thenReturn(tamponne);
+
+        assertThat(service.telechargerDocument(VENTE_ID, BRANCHE)).isSameAs(tamponne);
+    }
+
+    @Test
+    @DisplayName("acheteur avec IFU, avoir, facture sans demande ou demande supprimée → document rendu tel quel")
+    void horsParticulierAvecDemande_documentIntact() {
+        venteNormalisee().setClientIfu("3201810410828");
+        assertThat(service.telechargerDocument(VENTE_ID, BRANCHE)).isSameAs(DOCUMENT);
+
+        venteNormalisee().setStatusInvoice(1);
+        assertThat(service.telechargerDocument(VENTE_ID, BRANCHE)).isSameAs(DOCUMENT);
+
+        venteNormalisee().setTestOrder(null);
+        assertThat(service.telechargerDocument(VENTE_ID, BRANCHE)).isSameAs(DOCUMENT);
+
+        venteNormalisee().getTestOrder().setCode("  ");
+        assertThat(service.telechargerDocument(VENTE_ID, BRANCHE)).isSameAs(DOCUMENT);
+
+        // Demande supprimée depuis : le proxy paresseux ne se résout plus.
+        com.labo.anapath.testorder.TestOrder supprimee =
+                org.mockito.Mockito.mock(com.labo.anapath.testorder.TestOrder.class);
+        when(supprimee.getCode()).thenThrow(new jakarta.persistence.EntityNotFoundException());
+        venteNormalisee().setTestOrder(supprimee);
+        assertThat(service.telechargerDocument(VENTE_ID, BRANCHE)).isSameAs(DOCUMENT);
+
+        verify(tampon, never()).apposer(any(), anyString());
     }
 }
