@@ -33,4 +33,11 @@ public interface SettingAppRepository extends JpaRepository<SettingApp, UUID> {
      * Utilisé pour les settings transversaux (OurVoice, entête PDF…).
      */
     Optional<SettingApp> findByKey(String key);
+
+    /**
+     * Valeur la plus récemment enregistrée d'une clé, toutes branches confondues :
+     * pour un réglage commun au laboratoire, c'est la dernière saisie qui compte,
+     * quelle que soit l'agence depuis laquelle elle a été faite.
+     */
+    Optional<SettingApp> findFirstByKeyOrderByUpdatedAtDesc(String key);
 }

@@ -108,6 +108,17 @@ public interface ReportService {
             Boolean isUrgent, Integer statusFilter, Boolean isLate,
             Discipline discipline);
 
+    /**
+     * @param rappel {@code A_RAPPELER} (non joint, ni informé, ni livré) ou une
+     *               {@link IssueRappel} ; nul = pas de filtre
+     */
+    PageResponse<ReportSuiviRowDto> getSuiviList(
+            UUID branchId, int page, int size,
+            String search, String typeOrderId,
+            String dateBegin, String dateEnd,
+            Boolean isUrgent, Integer statusFilter, Boolean isLate,
+            Discipline discipline, String rappel);
+
     PageResponse<LogReportResponseDto> getReportLogs(UUID branchId, int page, int size);
 
     PageResponse<ReportGlobalSearchRowDto> globalSearch(

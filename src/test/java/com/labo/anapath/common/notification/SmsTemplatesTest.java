@@ -8,6 +8,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 
 import java.util.List;
 import java.util.Optional;
@@ -22,6 +24,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
+// smsFacture lit aussi le numéro de rappel : les tests qui ne le règlent pas
+// laissent cette lecture à la réponse par défaut (aucun réglage).
+@MockitoSettings(strictness = Strictness.LENIENT)
 class SmsTemplatesTest {
 
     @Mock private SettingAppRepository settingAppRepository;
@@ -151,5 +156,32 @@ class SmsTemplatesTest {
     void sansDemande_varianteCourte() {
         assertThat(templates.smsFacture(BRANCHE, "FA260003", null, "https://x/y"))
                 .isEqualTo("Facture FA260003: https://x/y");
+    }
+
+    @Test
+    @DisplayName("numéro de rappel paramétré → le SMS demande de l'enregistrer, et tient en une unité")
+    void numeroDeRappel_ajouteEtUneUnite() {
+        when(settingAppRepository.findByKeyInOrderByCreatedAtAsc(List.of(SmsTemplates.CLE_NUMERO_RAPPEL)))
+                .thenReturn(List.of(setting("+2290197000001")));
+
+        // Code de demande réel (26-4099) et lien court réaliste (jeton de 12 caractères).
+        String sms = templates.smsFacture(BRANCHE, "FA260001", "26-4099", "https://api.caap.bj/f/Ab3dE5fG7hJ9");
+
+        assertThat(sms).isEqualTo("Dossier 26-4099: resultat sous 3 semaines. Facture: https://api.caap.bj/f/Ab3dE5fG7hJ9 "
+                        + "Enregistrez le +2290197000001, il vous appellera au resultat")
+                .hasSizeLessThanOrEqualTo(SmsTemplates.SMS_UNITE)
+                .matches("\\p{ASCII}+");
+    }
+
+    @Test
+    @DisplayName("numéro de rappel + lien trop long → texte sans rappel, jamais deux SMS")
+    void numeroDeRappel_tropLong_texteSansRappel() {
+        when(settingAppRepository.findByKeyInOrderByCreatedAtAsc(List.of(SmsTemplates.CLE_NUMERO_RAPPEL)))
+                .thenReturn(List.of(setting("+2290197000001")));
+        String lien = "https://api.caap.bj/f/" + "a".repeat(60);
+
+        assertThat(templates.smsFacture(BRANCHE, "FA260001", "26-4099", lien))
+                .isEqualTo("Dossier 26-4099: resultat dans 3 semaines. Facture: " + lien)
+                .hasSizeLessThanOrEqualTo(SmsTemplates.SMS_UNITE);
     }
 }

@@ -8,12 +8,13 @@ import java.util.UUID;
  *
  * <p>Publié par {@code ReportServiceImpl} sur les trois chemins qui posent ce
  * statut — création directe en validé, enregistrement du formulaire, et l'action
- * dédiée {@code POST /reports/{id}/validate} — et consommé après commit par
- * {@link ReportValidationNotifier}, qui prévient le patient.</p>
+ * dédiée {@code POST /reports/{id}/validate}.</p>
  *
- * <p><b>Pourquoi un événement.</b> La validation engage un diagnostic ; l'appel
- * vocal n'est qu'un avis de disponibilité. Les lier dans la même transaction
- * ferait perdre une signature de pathologiste parce qu'OurVoice n'a pas répondu.</p>
+ * <p><b>Aucun écouteur aujourd'hui.</b> Le patient était appelé dès la
+ * validation ; il l'est désormais X heures après, par
+ * {@link RattrapageAvisPatientJob}, qui lit les comptes rendus validés plutôt
+ * que cet événement. Celui-ci reste le point d'accroche d'une réaction
+ * immédiate à la validation, hors de sa transaction.</p>
  *
  * @param reportId identifiant du compte-rendu validé
  * @param userId   utilisateur ayant validé, pour la journalisation de l'envoi

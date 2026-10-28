@@ -52,7 +52,7 @@ class DashboardAccesIT {
     static final List<String> ROUTES = List.of(
             "/stats", "/secretariat-stats", "/reports-today", "/doctor-stats", "/top-examens",
             "/monthly-stats", "/connected-users", "/revenue", "/invoice-status",
-            "/doctor/exam-status", "/doctor/appointments", "/doctor/orders", "/doctor/orders-today");
+            "/doctor/exam-status", "/doctor/appointments", "/doctor/orders", "/doctor/orders-today", "/rappels");
     static final List<String> MONTANTS = List.of("/revenue", "/invoice-status");
 
     private static final UUID AGENCE = UUID.fromString("00000000-0000-0000-0000-000000000001");

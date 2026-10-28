@@ -32,7 +32,7 @@ public interface ReportRepository extends JpaRepository<Report, UUID> {
 
     /**
      * Comptes-rendus validés dont le patient n'a jamais reçu l'avis de
-     * disponibilité — ceux que la reprise de 8h doit traiter.
+     * disponibilité — ceux que la tâche de rappel doit traiter.
      *
      * <p>Seuls les {@code VALIDATED} sont repris : un compte-rendu déjà
      * {@code DELIVERED} a été retiré, prévenir son patient n'a plus d'objet.</p>
@@ -48,14 +48,17 @@ public interface ReportRepository extends JpaRepository<Report, UUID> {
      * pathologique.</p>
      *
      * @param depuis   date de validation la plus ancienne encore reprise
+     * @param avant    date de validation la plus récente déjà due (maintenant moins le délai de rappel)
      * @param pageable plafond du lot ; le tri est porté par la requête
      */
     @Query("SELECT r FROM Report r "
             + "WHERE r.status = com.labo.anapath.report.ReportStatus.VALIDATED "
             + "AND r.patientNotifiedAt IS NULL "
             + "AND r.signatureDate >= :depuis "
+            + "AND r.signatureDate <= :avant "
             + "ORDER BY r.signatureDate ASC")
-    List<Report> findAvisPatientEnAttente(@Param("depuis") LocalDateTime depuis, Pageable pageable);
+    List<Report> findAvisPatientEnAttente(@Param("depuis") LocalDateTime depuis,
+                                          @Param("avant") LocalDateTime avant, Pageable pageable);
 
     List<Report> findByTestOrder_IdIn(Collection<UUID> testOrderIds);
 
@@ -274,11 +277,22 @@ public interface ReportRepository extends JpaRepository<Report, UUID> {
                 r.is_delivered as isDelivered,
                 r.retriever_name as retrieverName,
                 r.retriever_signature as retrieverSignature,
-                r.delivery_date as deliveryDate
+                r.delivery_date as deliveryDate,
+                ap.issue as rappelIssue,
+                ap.attempts as rappelTentatives,
+                ap.listened_pct as rappelPctEcoute,
+                ap.created_at as rappelDate
             FROM reports r
             JOIN test_orders t ON r.test_order_id = t.id
             JOIN patients p ON t.patient_id = p.id
             LEFT JOIN type_orders ty ON t.type_order_id = ty.id
+            LEFT JOIN LATERAL (
+                SELECT a.issue, a.attempts, a.listened_pct, a.created_at
+                FROM appel_by_reports a
+                WHERE a.report_id = r.id AND a.issue IS NOT NULL AND a.deleted_at IS NULL
+                ORDER BY a.created_at DESC
+                LIMIT 1
+            ) ap ON true
             LEFT JOIN LATERAL (
                 SELECT a2.user_id, a2.created_at
                 FROM test_order_assignment_details d2
@@ -313,6 +327,12 @@ public interface ReportRepository extends JpaRepository<Report, UUID> {
                    (:statusFilter = 4 AND r.status IN ('VALIDATED','DELIVERED')) OR
                    (:statusFilter = 5 AND r.is_delivered = false))
               AND (:isLate IS NULL OR (r.status = 'DRAFT' AND DATE(r.created_at) <= CURRENT_DATE - 21))
+              AND (:rappel IS NULL
+                   OR (:rappel = 'A_RAPPELER'
+                       AND ap.issue IN ('PARTIEL', 'SANS_REPONSE', 'INJOIGNABLE', 'SANS_NUMERO')
+                       AND COALESCE(r.is_called, false) = false
+                       AND COALESCE(r.is_delivered, false) = false)
+                   OR ap.issue = :rappel)
               AND r.discipline = :discipline
             ORDER BY r.created_at DESC
             """,
@@ -321,6 +341,13 @@ public interface ReportRepository extends JpaRepository<Report, UUID> {
             FROM reports r
             JOIN test_orders t ON r.test_order_id = t.id
             JOIN patients p ON t.patient_id = p.id
+            LEFT JOIN LATERAL (
+                SELECT a.issue, a.attempts, a.listened_pct, a.created_at
+                FROM appel_by_reports a
+                WHERE a.report_id = r.id AND a.issue IS NOT NULL AND a.deleted_at IS NULL
+                ORDER BY a.created_at DESC
+                LIMIT 1
+            ) ap ON true
             WHERE r.branch_id = :branchId
               AND r.deleted_at IS NULL
               AND (:search IS NULL OR :search = ''
@@ -346,6 +373,12 @@ public interface ReportRepository extends JpaRepository<Report, UUID> {
                    (:statusFilter = 4 AND r.status IN ('VALIDATED','DELIVERED')) OR
                    (:statusFilter = 5 AND r.is_delivered = false))
               AND (:isLate IS NULL OR (r.status = 'DRAFT' AND DATE(r.created_at) <= CURRENT_DATE - 21))
+              AND (:rappel IS NULL
+                   OR (:rappel = 'A_RAPPELER'
+                       AND ap.issue IN ('PARTIEL', 'SANS_REPONSE', 'INJOIGNABLE', 'SANS_NUMERO')
+                       AND COALESCE(r.is_called, false) = false
+                       AND COALESCE(r.is_delivered, false) = false)
+                   OR ap.issue = :rappel)
               AND r.discipline = :discipline
             """,
             nativeQuery = true)
@@ -358,6 +391,7 @@ public interface ReportRepository extends JpaRepository<Report, UUID> {
             @Param("isUrgent") Boolean isUrgent,
             @Param("statusFilter") Integer statusFilter,
             @Param("isLate") Boolean isLate,
+            @Param("rappel") String rappel,
             @Param("discipline") String discipline,
             Pageable pageable);
 

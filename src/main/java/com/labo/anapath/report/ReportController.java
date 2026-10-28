@@ -3,6 +3,7 @@ package com.labo.anapath.report;
 import com.labo.anapath.common.Discipline;
 import com.labo.anapath.common.dto.ApiResponse;
 import com.labo.anapath.common.dto.PageResponse;
+import com.labo.anapath.common.exception.ResourceNotFoundException;
 import com.labo.anapath.common.security.UserPrincipal;
 import com.labo.anapath.setting.SettingReportTemplate;
 import jakarta.validation.Valid;
@@ -54,6 +55,8 @@ public class ReportController {
     private final ReportService reportService;
     private final NotificationService notificationService;
     private final PdfReportService pdfReportService;
+    /** Contrôle d'agence des avis patient : le service, lui, sert aussi la tâche planifiée, sans agence. */
+    private final ReportRepository reportRepository;
 
     record TemplateDto(UUID id, String name, String header, String footer, String logoPath, UUID branchId, LocalDateTime createdAt) {}
 
@@ -100,12 +103,13 @@ public class ReportController {
             @RequestParam(required = false) Integer status,
             @RequestParam(required = false) Boolean isLate,
             @RequestParam(defaultValue = "PATHOLOGY") Discipline discipline,
+            @RequestParam(required = false) String rappel,
             @AuthenticationPrincipal UserPrincipal principal) {
         return ResponseEntity.ok(ApiResponse.success(
                 reportService.getSuiviList(
                         principal.getBranchId(), page, size,
                         search, typeOrderId, dateBegin, dateEnd,
-                        isUrgent, status, isLate, discipline)));
+                        isUrgent, status, isLate, discipline, rappel)));
     }
 
     @GetMapping("/logs")
@@ -310,41 +314,59 @@ public class ReportController {
     }
 
     @PostMapping("/{id}/call")
-    @PreAuthorize("hasAuthority('edit-reports')")
+    // Comme « patient informé » : le secrétariat qui remet les résultats prévient aussi.
+    @PreAuthorize("hasAuthority('deliver-reports')")
     public ResponseEntity<ApiResponse<CallResponseDto>> callPatient(
             @PathVariable UUID id,
             @AuthenticationPrincipal UserPrincipal principal) {
+        dansLAgence(id, principal);
         return ResponseEntity.ok(ApiResponse.success("Appel vocal lancé",
                 notificationService.callPatient(id, principal.getId())));
     }
 
     @PostMapping("/{id}/sms")
-    @PreAuthorize("hasAuthority('edit-reports')")
+    // Comme « patient informé » : le secrétariat qui remet les résultats prévient aussi.
+    @PreAuthorize("hasAuthority('deliver-reports')")
     public ResponseEntity<ApiResponse<SmsResponseDto>> sendSms(
             @PathVariable UUID id,
             @AuthenticationPrincipal UserPrincipal principal) {
+        dansLAgence(id, principal);
         return ResponseEntity.ok(ApiResponse.success("SMS envoyé",
                 notificationService.sendSms(id, principal.getId())));
     }
 
     /**
-     * Notifie le patient en laissant le serveur choisir le canal — équivalent de la
-     * route Laravel {@code report.callOrSendSms}. SMS si le bon porte l'option, sinon
-     * appel vocal et seulement entre 8h et 18h.
+     * Prévient le patient que son résultat est disponible : SMS et appel FluidChat,
+     * ce dernier dans la plage réglementaire — équivalent de la route Laravel
+     * {@code report.callOrSendSms}.
      */
     @PostMapping("/{id}/notify")
-    @PreAuthorize("hasAuthority('edit-reports')")
+    // Comme « patient informé » : le secrétariat qui remet les résultats prévient aussi.
+    @PreAuthorize("hasAuthority('deliver-reports')")
     public ResponseEntity<ApiResponse<NotifyResponseDto>> notifyPatient(
             @PathVariable UUID id,
             @AuthenticationPrincipal UserPrincipal principal) {
+        dansLAgence(id, principal);
         NotifyResponseDto result = notificationService.notifyPatient(id, principal.getId());
         return ResponseEntity.ok(ApiResponse.success(result.message(), result));
     }
 
     @GetMapping("/{id}/appel")
     @PreAuthorize("hasAuthority('view-reports')")
-    public ResponseEntity<ApiResponse<AppelResponseDto>> getAppelStatus(@PathVariable UUID id) {
+    public ResponseEntity<ApiResponse<AppelResponseDto>> getAppelStatus(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        dansLAgence(id, principal);
         return ResponseEntity.ok(ApiResponse.success(notificationService.getAppelStatus(id)));
+    }
+
+    /**
+     * 404 si le compte rendu n'est pas de l'agence courante : sans ce contrôle, un
+     * UUID d'une autre agence suffisait à faire appeler son patient.
+     */
+    private void dansLAgence(UUID id, UserPrincipal principal) {
+        reportRepository.findByIdAndBranchId(id, principal.getBranchId())
+                .orElseThrow(() -> new ResourceNotFoundException("Compte-rendu", id));
     }
 
     @GetMapping("/{id}/pdf")

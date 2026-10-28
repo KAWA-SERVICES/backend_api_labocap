@@ -217,4 +217,15 @@ public class Invoice extends AuditableEntity {
      */
     @Column(name = "share_sms_sent_at")
     private LocalDateTime shareSmsSentAt;
+
+    /**
+     * Date du bip FluidChat qui a fait voir au patient le numéro du rappel de
+     * résultat ; nulle tant qu'aucun bip n'est parti.
+     *
+     * <p>Écrite seulement par {@link InvoiceBipRepository#marquerBip} : le SMS et
+     * le bip réagissent au même événement, en parallèle, et l'enregistrement
+     * complet de la facture par l'un effacerait la marque posée par l'autre.</p>
+     */
+    @Column(name = "bip_sent_at", insertable = false, updatable = false)
+    private LocalDateTime bipSentAt;
 }

@@ -25,5 +25,10 @@ public record ReportSuiviRowDto(
         boolean isDelivered,
         String retrieverName,
         String retrieverSignature,
-        LocalDateTime deliveryDate
+        LocalDateTime deliveryDate,
+        /** Issue du dernier rappel automatique ; nulle tant qu'aucun rappel n'est parti. */
+        IssueRappel rappelIssue,
+        Integer rappelTentatives,
+        Integer rappelPctEcoute,
+        LocalDateTime rappelDate
 ) {}
