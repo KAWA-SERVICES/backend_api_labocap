@@ -37,6 +37,7 @@ public class InvoiceController {
     private final MecefService mecefService;
     private final FluidInvoiceService fluidInvoiceService;
     private final InvoicePdfService invoicePdfService;
+    private final InvoiceSmsNotifier invoiceSmsNotifier;
 
     @GetMapping
     @PreAuthorize("hasAuthority('view-invoices')")
@@ -238,6 +239,20 @@ public class InvoiceController {
                 fluidInvoiceService.normaliser(id, principal.getBranchId(),
                         corps == null ? null : corps.getPayment(),
                         corps == null ? null : corps.getDestinataire())));
+    }
+
+    /**
+     * Envoie au client le SMS de sa facture normalisée, quand l'envoi automatique
+     * n'est jamais parti. Refusé si le SMS est déjà parti.
+     */
+    @PostMapping("/{id}/sms")
+    @PreAuthorize("hasAuthority('edit-invoices')")
+    public ResponseEntity<ApiResponse<InvoiceResponseDto>> sendSms(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        String destinataire = invoiceSmsNotifier.envoyerALaDemande(id, principal.getBranchId());
+        return ResponseEntity.ok(ApiResponse.success("SMS envoyé au " + destinataire,
+                invoiceService.findById(id, principal.getBranchId())));
     }
 
     /**
