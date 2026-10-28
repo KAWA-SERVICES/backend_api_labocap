@@ -7,6 +7,9 @@ import com.labo.anapath.common.module.ModulesProperties;
 import com.labo.anapath.contract.ContratRepository;
 import com.labo.anapath.finance.InvoiceRepository;
 import com.labo.anapath.patient.PatientRepository;
+import com.labo.anapath.report.AppelByReportRepository;
+import com.labo.anapath.report.IssueRappel;
+import com.labo.anapath.report.ReglagesDeRappel;
 import com.labo.anapath.report.ReportRepository;
 import com.labo.anapath.report.ReportStatus;
 import com.labo.anapath.test.LabTestRepository;
@@ -24,7 +27,9 @@ import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -51,6 +56,8 @@ public class DashboardServiceImpl implements DashboardService {
     private final ContratRepository contratRepository;
     private final LabTestRepository labTestRepository;
     private final AppointmentRepository appointmentRepository;
+    private final AppelByReportRepository appelByReportRepository;
+    private final ReglagesDeRappel reglagesDeRappel;
     /** Interrupteur du module Biologie : sans lui, aucune répartition par discipline. */
     private final ModulesProperties modules;
 
@@ -478,5 +485,20 @@ public class DashboardServiceImpl implements DashboardService {
 
     private BigDecimal nullSafe(BigDecimal v) {
         return v != null ? v : BigDecimal.ZERO;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public DashboardDto.Rappels getRappels(UUID branchId, LocalDate debut, LocalDate fin) {
+        Map<IssueRappel, Long> parIssue = new EnumMap<>(IssueRappel.class);
+        for (IssueRappel issue : IssueRappel.values()) {
+            parIssue.put(issue, 0L);
+        }
+        for (Object[] ligne : appelByReportRepository.compterParIssue(
+                branchId, debut.atStartOfDay(), fin.plusDays(1).atStartOfDay())) {
+            parIssue.put(IssueRappel.valueOf((String) ligne[0]), ((Number) ligne[1]).longValue());
+        }
+        return new DashboardDto.Rappels(parIssue, appelByReportRepository.compterARappeler(branchId),
+                reglagesDeRappel.manquants());
     }
 }

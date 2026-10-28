@@ -24,4 +24,8 @@ public interface ReportSuiviProjection {
     String getRetrieverName();
     String getRetrieverSignature();
     LocalDateTime getDeliveryDate();
+    String getRappelIssue();
+    Integer getRappelTentatives();
+    Integer getRappelPctEcoute();
+    LocalDateTime getRappelDate();
 }

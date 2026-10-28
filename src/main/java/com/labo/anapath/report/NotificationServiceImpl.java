@@ -2,35 +2,29 @@ package com.labo.anapath.report;
 
 import com.labo.anapath.common.Discipline;
 import com.labo.anapath.common.exception.InvalidOperationException;
-import com.labo.anapath.common.notification.OurVoiceClient;
+import com.labo.anapath.common.notification.FluidChatClient;
 import com.labo.anapath.common.notification.PhoneNumbers;
 import com.labo.anapath.common.notification.SmsSender;
 import com.labo.anapath.common.notification.SmsTemplates;
 import com.labo.anapath.common.exception.ResourceNotFoundException;
-import com.labo.anapath.setting.SettingApp;
-import com.labo.anapath.setting.SettingAppRepository;
 import com.labo.anapath.testorder.TestOrderRepository;
 import com.labo.anapath.user.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class NotificationServiceImpl implements NotificationService {
 
-    /** Début de la plage où un appel vocal automatique est permis (Laravel : 8h). */
-    private static final int CALL_WINDOW_START_HOUR = 8;
-    /** Fin de la plage où un appel vocal automatique est permis (Laravel : 18h). */
-    private static final int CALL_WINDOW_END_HOUR = 18;
-
     /**
-     * Fuseau du laboratoire, celui dans lequel « 8h–18h » a un sens.
+     * Fuseau du laboratoire, celui dans lequel la plage d'appel a un sens.
      *
      * <p>Explicite, et non l'heure de la machine : le conteneur de production est
      * en UTC, si bien qu'une plage lue sur l'horloge du serveur décalerait tous
@@ -38,69 +32,99 @@ public class NotificationServiceImpl implements NotificationService {
      */
     public static final ZoneId FUSEAU_LABORATOIRE = ZoneId.of("Africa/Porto-Novo");
 
-    private static final String AUDIO_FON ="https://caap.bj/wp-content/uploads/2023/06/RESULTAT-DISPONIBLE-FON-VF.mp3";
-    private static final String AUDIO_EN  = "https://caap.bj/wp-content/uploads/2023/06/RESULTAT-DISPONIBLE-ANGLAIS-VF.mp3";
-    private static final String AUDIO_FR  = "https://caap.bj/wp-content/uploads/2023/06/RESULTAT-DISPONIBLE-FRANCAIS-VF.mp3";
-
     private final ReportRepository reportRepository;
     private final AppelByReportRepository appelByReportRepository;
     private final TestOrderRepository testOrderRepository;
     private final LogReportRepository logReportRepository;
-    private final SettingAppRepository settingAppRepository;
     private final SmsTemplates smsTemplates;
     private final UserRepository userRepository;
-    /** Appels vocaux : FluidPay ne fait que du SMS, la voix reste chez OurVoice. */
-    private final OurVoiceClient ourVoiceClient;
+    /** Appels vocaux : FluidChat, par le téléphone passerelle du laboratoire. */
+    private final FluidChatClient fluidChatClient;
+    private final ReglagesDeRappel reglagesDeRappel;
     /** SMS : passerelle FluidPay, qui achemine via OurVoice. */
     private final SmsSender smsSender;
 
+    /**
+     * Met en file chez FluidChat l'appel « votre résultat est disponible ».
+     *
+     * <p>La plage réglementaire part avec l'appel ({@code call_window}) : FluidChat
+     * fait attendre l'appel et ses relances jusqu'à l'ouverture, y compris quand
+     * un agent clique hors des heures permises. Chaque appel ajoute une ligne à
+     * l'historique ; la tâche de suivi en relit l'issue.</p>
+     */
     @Override
     @Transactional
     public CallResponseDto callPatient(UUID reportId, UUID userId) {
-        // Global : appelé aussi hors requête (événement de validation, rattrapage planifié), sans agence courante.
+        // Global : appelé aussi hors requête (rappel planifié), sans agence courante.
         Report report = reportRepository.findById(reportId)
                 .orElseThrow(() -> new ResourceNotFoundException("Compte-rendu", reportId));
 
         var patient = report.getTestOrder().getPatient();
+        String to = numeroDuPatient(report);
+        if (to == null) {
+            throw new InvalidOperationException(
+                    "Aucun numéro de téléphone pour ce patient : renseignez-le sur sa fiche.");
+        }
+        // Un appel déjà en file ou en cours : un second clic ne doit pas faire
+        // sonner le patient deux fois (ni payer deux appels).
+        if (appelByReportRepository.findFirstByReportIdOrderByCreatedAtDesc(reportId)
+                .map(dernier -> dernier.getIssue() == IssueRappel.EN_COURS).orElse(false)) {
+            throw new InvalidOperationException("Un appel est déjà programmé pour ce patient.");
+        }
+        String audio = reglagesDeRappel.audio(patient.getLangue());
+        if (audio == null) {
+            throw new InvalidOperationException(
+                    "Lien audio de la langue du patient non renseigné (Paramètres › Rappel des patients).");
+        }
 
-        // RÈGLE R7 : mise au format international avant envoi à OurVoice
-        String to = PhoneNumbers.toInternational(patient.getTelephone1());
+        FluidChatClient.Appel lance = fluidChatClient.lancer("+" + to, audio,
+                reglagesDeRappel.plage().versCallWindow(), report.getTestOrder().getCode());
+        String appelId = String.valueOf(lance.id());
 
-        // RÈGLE R6 : sélection URL audio selon langue du patient
-        String audioUrl = switch (patient.getLangue() == null ? "" : patient.getLangue().toLowerCase()) {
-            case "fon" -> AUDIO_FON;
-            case "anglais" -> AUDIO_EN;
-            default -> AUDIO_FR;
-        };
-
-        String accessToken = settingAppRepository.findByKey("key_ourvoice")
-                .map(SettingApp::getValue)
-                .orElseThrow(() -> new InvalidOperationException("Clé API OurVoice non configurée"));
-        String endpoint = settingAppRepository.findByKey("link_ourvoice_call")
-                .map(SettingApp::getValue)
-                .orElseThrow(() -> new InvalidOperationException("Endpoint OurVoice non configuré"));
-
-        String appelId = ourVoiceClient.call(endpoint, accessToken, to, audioUrl);
-
-        // Mettre à jour testOrder.statusAppel
         report.getTestOrder().setStatusAppel(appelId);
         testOrderRepository.save(report.getTestOrder());
 
-        // Créer ou mettre à jour AppelByReport
-        AppelByReport appel = appelByReportRepository.findByReportId(reportId)
-                .orElse(new AppelByReport());
-        appel.setBranchId(report.getBranchId());
-        appel.setReport(report);
+        AppelByReport appel = nouvelAppel(report);
         appel.setAppelId(appelId);
+        appliquer(appel, lance);
         appelByReportRepository.save(appel);
 
-        // L'avis est parti : la reprise de 8h n'a plus à s'en occuper.
+        // L'avis est parti : la tâche de rappel n'a plus à s'en occuper.
         report.setPatientNotifiedAt(LocalDateTime.now());
         reportRepository.save(report);
 
         logAction(reportId, "Appel vocal lancé", userId, report.getBranchId());
 
-        return new CallResponseDto(appelId, reportId, audioUrl);
+        return new CallResponseDto(appelId, reportId, audio);
+    }
+
+    /**
+     * Reporte sur une ligne d'historique ce que FluidChat dit de l'appel.
+     *
+     * <p>Package-private : la tâche de suivi s'en sert à chaque relecture.</p>
+     */
+    @Override
+    @Transactional
+    public void actualiser(AppelByReport appel) {
+        appliquer(appel, fluidChatClient.lire(Long.parseLong(appel.getAppelId())));
+        appelByReportRepository.save(appel);
+        // Joint : le patient est informé, comme si le secrétariat l'avait marqué.
+        Report report = appel.getReport();
+        if (appel.getIssue() == IssueRappel.JOINT && report != null && !report.isCalled()) {
+            report.setCalled(true);
+            reportRepository.save(report);
+        }
+    }
+
+    static void appliquer(AppelByReport appel, FluidChatClient.Appel lu) {
+        appel.setStatus(lu.status());
+        appel.setResult(lu.result());
+        appel.setListenedPct(lu.listenedPct());
+        appel.setAttempts(lu.attempts());
+        appel.setIssue(IssueRappel.de(lu.status(), lu.result(), lu.listenedPct()));
+        if (appel.getIssue() != IssueRappel.EN_COURS && appel.getFinishedAt() == null) {
+            appel.setFinishedAt(LocalDateTime.now());
+        }
     }
 
     @Override
@@ -110,10 +134,11 @@ public class NotificationServiceImpl implements NotificationService {
         Report report = reportRepository.findById(reportId)
                 .orElseThrow(() -> new ResourceNotFoundException("Compte-rendu", reportId));
 
-        var patient = report.getTestOrder().getPatient();
-
-        // RÈGLE R7 : mise au format international
-        String to = PhoneNumbers.toInternational(patient.getTelephone1());
+        String to = numeroDuPatient(report);
+        if (to == null) {
+            throw new InvalidOperationException(
+                    "Aucun numéro de téléphone pour ce patient : renseignez-le sur sa fiche.");
+        }
 
         // Texte modifiable depuis Paramètres → Communication Mobile ; le message
         // livré prend le relais tant qu'aucun n'y a été saisi.
@@ -130,7 +155,7 @@ public class NotificationServiceImpl implements NotificationService {
                 : smsTemplates.smsResultat(report.getBranchId());
         smsSender.envoyer(to, texte, SmsSender.SOURCE_RESULTAT, UUID.randomUUID());
 
-        // L'avis est parti : la reprise de 8h n'a plus à s'en occuper.
+        // L'avis est parti : la tâche de rappel n'a plus à s'en occuper.
         report.setPatientNotifiedAt(LocalDateTime.now());
         reportRepository.save(report);
 
@@ -140,53 +165,91 @@ public class NotificationServiceImpl implements NotificationService {
     }
 
     /**
-     * Notifie le patient en arbitrant seul entre SMS et appel vocal.
+     * Prévient le patient que son résultat est disponible : SMS, puis appel.
      *
-     * <p>Règle reprise de {@code ReportController::callOrSendSms()} :
-     * <ol>
-     *   <li>si le bon d'examen porte {@code option}, on envoie un SMS ;</li>
-     *   <li>sinon on lance un appel vocal, mais seulement entre
-     *       {@value #CALL_WINDOW_START_HOUR}h et {@value #CALL_WINDOW_END_HOUR}h ;</li>
-     *   <li>hors de cette plage, rien n'est envoyé — le compte-rendu garde son
-     *       {@link Report#getPatientNotifiedAt()} vide, et
-     *       {@link RattrapageAvisPatientJob} reprend l'avis le lendemain à 8h.</li>
-     * </ol>
-     * Sans cet arbitrage, un appel automatique pouvait partir en pleine nuit.
+     * <p>Les deux partent, chacun pour soi : un SMS refusé ne doit pas priver le
+     * patient de son appel, ni l'inverse. L'avis compte comme donné dès que l'un
+     * des deux est parti ; si aucun ne part, l'erreur remonte et la tâche de
+     * rappel réessaie au passage suivant.</p>
+     *
+     * <p>Un patient sans numéro n'est pas réessayé : une ligne {@code SANS_NUMERO}
+     * le signale au secrétariat, et l'avis est marqué donné pour ne pas reboucler.</p>
      */
     @Override
     @Transactional
     public NotifyResponseDto notifyPatient(UUID reportId, UUID userId) {
-        // Global : appelé aussi hors requête (événement de validation, rattrapage planifié), sans agence courante.
+        // Global : appelé aussi hors requête (rappel planifié), sans agence courante.
         Report report = reportRepository.findById(reportId)
                 .orElseThrow(() -> new ResourceNotFoundException("Compte-rendu", reportId));
 
-        boolean smsOption = report.getTestOrder() != null
-                && Boolean.TRUE.equals(report.getTestOrder().getOption());
-
-        if (smsOption) {
-            sendSms(reportId, userId);
-            return new NotifyResponseDto("SMS", reportId, null, "SMS envoyé au patient");
-        }
-
-        LocalTime now = LocalTime.now(FUSEAU_LABORATOIRE);
-        boolean withinCallWindow = !now.isBefore(LocalTime.of(CALL_WINDOW_START_HOUR, 0))
-                && !now.isAfter(LocalTime.of(CALL_WINDOW_END_HOUR, 0));
-        if (!withinCallWindow) {
+        if (numeroDuPatient(report) == null) {
+            AppelByReport appel = nouvelAppel(report);
+            appel.setIssue(IssueRappel.SANS_NUMERO);
+            appel.setFinishedAt(LocalDateTime.now());
+            appelByReportRepository.save(appel);
+            report.setPatientNotifiedAt(LocalDateTime.now());
+            reportRepository.save(report);
+            logAction(reportId, "Rappel impossible : aucun numéro", userId, report.getBranchId());
             return new NotifyResponseDto("NONE", reportId, null,
-                    "Aucun appel : hors de la plage autorisée ("
-                            + CALL_WINDOW_START_HOUR + "h–" + CALL_WINDOW_END_HOUR + "h)");
+                    "Aucun numéro de téléphone : le patient est à prévenir par le secrétariat");
         }
 
-        CallResponseDto call = callPatient(reportId, userId);
-        return new NotifyResponseDto("CALL", reportId, call.appelId(), "Appel vocal lancé");
+        RuntimeException echec = null;
+        boolean smsParti = false;
+        try {
+            sendSms(reportId, userId);
+            smsParti = true;
+        } catch (RuntimeException e) {
+            log.warn("Compte-rendu {} : SMS de résultat non envoyé : {}", reportId, e.getMessage());
+            echec = e;
+        }
+        try {
+            CallResponseDto call = callPatient(reportId, userId);
+            return new NotifyResponseDto("CALL", reportId, call.appelId(),
+                    smsParti ? "SMS envoyé et appel programmé" : "Appel programmé (SMS non envoyé)");
+        } catch (RuntimeException e) {
+            log.warn("Compte-rendu {} : appel de rappel non lancé : {}", reportId, e.getMessage());
+            if (!smsParti) {
+                throw echec != null ? echec : e;
+            }
+        }
+        return new NotifyResponseDto("SMS", reportId, null, "SMS envoyé (appel non lancé)");
     }
 
     @Override
-    @Transactional(readOnly = true)
+    // Pas en lecture seule : un appel en cours relu chez FluidChat est réécrit.
+    @Transactional
     public AppelResponseDto getAppelStatus(UUID reportId) {
-        AppelByReport appel = appelByReportRepository.findByReportId(reportId)
+        AppelByReport appel = appelByReportRepository.findFirstByReportIdOrderByCreatedAtDesc(reportId)
                 .orElseThrow(() -> new ResourceNotFoundException("Appel", reportId));
-        return new AppelResponseDto(appel.getId(), reportId, appel.getAppelId(), appel.getCreatedAt());
+        // Suivi en direct depuis l'écran : un appel en cours est relu chez FluidChat
+        // à chaque consultation, sans attendre la tâche de suivi.
+        if (appel.getIssue() == IssueRappel.EN_COURS) {
+            try {
+                actualiser(appel);
+            } catch (RuntimeException e) {
+                log.warn("Appel {} non relu : {}", appel.getAppelId(), e.getMessage());
+            }
+        }
+        return new AppelResponseDto(appel.getId(), reportId, appel.getAppelId(), appel.getCreatedAt(),
+                appel.getIssue(), appel.getResult(), appel.getListenedPct(), appel.getAttempts());
+    }
+
+    private static AppelByReport nouvelAppel(Report report) {
+        AppelByReport appel = new AppelByReport();
+        appel.setBranchId(report.getBranchId());
+        appel.setReport(report);
+        return appel;
+    }
+
+    /** Numéro du patient au format international sans « + », ou nul s'il n'en a pas. */
+    private static String numeroDuPatient(Report report) {
+        var patient = report.getTestOrder().getPatient();
+        String telephone = patient.getTelephone1();
+        if (telephone == null || telephone.isBlank()) {
+            telephone = patient.getTelephone2();
+        }
+        return PhoneNumbers.toInternational(telephone);
     }
 
     private void logAction(UUID reportId, String action, UUID userId, UUID branchId) {

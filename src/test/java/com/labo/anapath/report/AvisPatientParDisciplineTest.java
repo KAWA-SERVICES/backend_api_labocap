@@ -1,7 +1,7 @@
 package com.labo.anapath.report;
 
 import com.labo.anapath.common.Discipline;
-import com.labo.anapath.common.notification.OurVoiceClient;
+import com.labo.anapath.common.notification.FluidChatClient;
 import com.labo.anapath.common.notification.SmsSender;
 import com.labo.anapath.common.notification.SmsTemplates;
 import com.labo.anapath.patient.Patient;
@@ -39,18 +39,19 @@ class AvisPatientParDisciplineTest {
     private final ReportRepository reportRepository = mock(ReportRepository.class);
     private final SettingAppRepository settingAppRepository = mock(SettingAppRepository.class);
     private final SmsSender smsSender = mock(SmsSender.class);
-    private final OurVoiceClient ourVoiceClient = mock(OurVoiceClient.class);
     private final SmsTemplates templates = new SmsTemplates(settingAppRepository);
+    // Sans audio de rappel paramétré (mock), l'appel ne part pas : seul le SMS
+    // est en jeu ici.
     private final NotificationServiceImpl service = new NotificationServiceImpl(reportRepository,
             mock(AppelByReportRepository.class), mock(TestOrderRepository.class), mock(LogReportRepository.class),
-            settingAppRepository, templates, mock(UserRepository.class), ourVoiceClient, smsSender);
+            templates, mock(UserRepository.class), mock(FluidChatClient.class), mock(ReglagesDeRappel.class),
+            smsSender);
 
     private Report compteRendu(Discipline discipline) {
         Patient patient = new Patient();
         patient.setTelephone1("97000000");
         TestOrder bon = new TestOrder();
         bon.setPatient(patient);
-        bon.setOption(true); // canal SMS
         Report r = new Report();
         r.setId(UUID.randomUUID());
         r.setBranchId(BRANCHE);

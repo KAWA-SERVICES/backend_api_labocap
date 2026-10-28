@@ -2,6 +2,7 @@ package com.labo.anapath.dashboard;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.labo.anapath.common.Discipline;
+import com.labo.anapath.report.IssueRappel;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -163,4 +164,16 @@ public class DashboardDto {
         String patientLastname,
         int reportStatus
     ) {}
+
+    /**
+     * Rappels automatiques des patients : section du tableau de bord et bandeau.
+     *
+     * @param parIssue  dernier rappel de chaque compte rendu sur la période, par issue
+     *                  (toutes les issues présentes, à 0 si aucune)
+     * @param aRappeler patients non joints, ni marqués informés, ni venus chercher
+     *                  leur résultat — toutes dates confondues : c'est le bandeau
+     * @param reglagesManquants ce qui empêche des appels de partir (clés audio vides,
+     *                  {@code fluidchat_api}) ; vide si tout est prêt — second bandeau
+     */
+    public record Rappels(Map<IssueRappel, Long> parIssue, long aRappeler, List<String> reglagesManquants) {}
 }

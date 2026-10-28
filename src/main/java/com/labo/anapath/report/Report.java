@@ -181,11 +181,11 @@ public class Report extends AuditableEntity {
 
     /**
      * Date d'envoi de l'avis automatique de disponibilité au patient (appel
-     * OurVoice ou SMS), posée à la validation du compte-rendu.
+     * FluidChat ou SMS), posée par la tâche de rappel.
      *
      * <p>{@code null} signifie qu'aucun avis n'est parti — l'état d'un
-     * compte-rendu validé hors de la plage d'appel 8h–18h. C'est sur ce seul
-     * critère que la reprise de 8h choisit qui rappeler ; sans lui, elle
+     * compte-rendu validé depuis moins de X heures, ou hors de la plage d'appel.
+     * C'est sur ce seul critère que la tâche de rappel choisit qui prévenir ; sans lui, elle
      * rappellerait des patients déjà prévenus.</p>
      *
      * <p><b>À ne pas confondre avec {@link #isCalled}</b>, que l'agent coche à la

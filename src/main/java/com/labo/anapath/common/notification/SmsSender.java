@@ -22,8 +22,7 @@ import java.util.UUID;
  * qui achemine via l'opérateur désigné par
  * {@link FluidPaySmsProperties#getProvider()} — OurVoice pour le laboratoire.
  * L'appel vocal, lui, ne passe pas par FluidPay, dont l'API ne fait que du SMS :
- * il continue de partir vers l'API OurVoice directe, voir
- * {@link OurVoiceClient#call}.</p>
+ * il part par FluidChat, voir {@link FluidChatClient}.</p>
  *
  * <p><b>Le repli, et sa raison.</b> Tant que la clé FluidPay n'est pas
  * renseignée, les SMS repartent par l'API OurVoice directe, comme avant. Sans

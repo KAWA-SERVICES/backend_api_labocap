@@ -213,6 +213,10 @@ services:
       FLUIDPAY_SMS_ENCRYPTION_KEY: ${FLUIDPAY_SMS_ENCRYPTION_KEY:-}
       FLUIDPAY_SMS_PROVIDER: ${FLUIDPAY_SMS_PROVIDER:-lafricamobile}
       FLUIDPAY_SMS_SENDER: ${FLUIDPAY_SMS_SENDER:-}
+      # ─── Appels « résultat disponible » par FluidChat ───────────────────
+      # Sans adresse ni clé, aucun appel ne part ; le SMS part quand même.
+      FLUIDCHAT_BASE_URL: ${FLUIDCHAT_BASE_URL:-}
+      FLUIDCHAT_API_KEY: ${FLUIDCHAT_API_KEY:-}
       # ─── Journal applicatif ─────────────────────────────────────────────
       # Sur un volume : écrit dans le conteneur, il disparaissait à chaque
       # redéploiement, et avec lui toute trace d'un incident.
