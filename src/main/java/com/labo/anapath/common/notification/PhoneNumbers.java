@@ -59,4 +59,20 @@ public final class PhoneNumbers {
         }
         return INDICATIF_BENIN + chiffres;
     }
+
+    /**
+     * Comme {@link #toInternational}, en ajoutant le « 01 » qu'un ancien numéro
+     * béninois à 8 chiffres a reçu le 30 novembre 2024 : {@code 97000001} part en
+     * {@code 2290197000001}. Sans lui, la passerelle en fait un numéro à 14
+     * chiffres et le SMS, accepté, n'arrive jamais.
+     *
+     * <p>Réservé pour l'instant au SMS de la facture normalisée.</p>
+     */
+    public static String toInternationalA10Chiffres(String numero) {
+        String international = toInternational(numero);
+        // 11 chiffres = 229 + un ancien numéro à 8 chiffres.
+        return international != null && international.length() == INDICATIF_BENIN.length() + 8
+                ? INDICATIF_BENIN + "01" + international.substring(INDICATIF_BENIN.length())
+                : international;
+    }
 }

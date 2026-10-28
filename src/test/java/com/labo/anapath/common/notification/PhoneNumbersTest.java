@@ -52,4 +52,16 @@ class PhoneNumbersTest {
         assertThat(PhoneNumbers.toInternational("   ")).isNull();
         assertThat(PhoneNumbers.toInternational("néant")).isNull();
     }
+
+    @Test
+    @DisplayName("SMS facture : ancien numéro à 8 chiffres → « 01 » ajouté (réforme du 30/11/2024)")
+    void aDixChiffres_ajouteLe01() {
+        // Sans le « 01 », la passerelle en fabriquait un numéro à 14 chiffres
+        // (22901997000001) : le SMS partait sans erreur et n'arrivait jamais.
+        assertThat(PhoneNumbers.toInternationalA10Chiffres("97000001")).isEqualTo("2290197000001");
+        assertThat(PhoneNumbers.toInternationalA10Chiffres("+229 97 00 00 01")).isEqualTo("2290197000001");
+        assertThat(PhoneNumbers.toInternationalA10Chiffres("0197000001")).isEqualTo("2290197000001");
+        assertThat(PhoneNumbers.toInternationalA10Chiffres("+229 01 97 00 00 01")).isEqualTo("2290197000001");
+        assertThat(PhoneNumbers.toInternationalA10Chiffres(null)).isNull();
+    }
 }

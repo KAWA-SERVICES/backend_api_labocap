@@ -189,4 +189,34 @@ class InvoiceControllerIT {
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
     }
+
+    @Test
+    @DisplayName("POST /invoices/{id}/sms sur une facture non normalisée → 422, rien n'est envoyé")
+    void envoyerSms_factureNonNormalisee_returns422() {
+        String token = loginAndGetToken();
+
+        ResponseEntity<ApiResponse<Map<String, Object>>> response = restTemplate.exchange(
+                baseUrl() + "/" + invoiceId + "/sms", HttpMethod.POST,
+                new HttpEntity<>(authHeaders(token)),
+                new ParameterizedTypeReference<>() {});
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
+        assertThat(response.getBody().message()).contains("Normalisez");
+        assertThat(invoiceRepository.findById(invoiceId).orElseThrow().getShareSmsSentAt()).isNull();
+    }
+
+    @Test
+    @DisplayName("GET /invoices/{id} → expose shareSmsSentAt, nul tant qu'aucun SMS n'est parti")
+    void findById_exposeLaDateDEnvoiDuSms() {
+        String token = loginAndGetToken();
+
+        ResponseEntity<ApiResponse<Map<String, Object>>> response = restTemplate.exchange(
+                baseUrl() + "/" + invoiceId, HttpMethod.GET,
+                new HttpEntity<>(authHeaders(token)),
+                new ParameterizedTypeReference<>() {});
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody().data()).containsKey("shareSmsSentAt");
+        assertThat(response.getBody().data().get("shareSmsSentAt")).isNull();
+    }
 }

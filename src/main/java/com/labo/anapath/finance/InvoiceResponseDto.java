@@ -35,6 +35,8 @@ public record InvoiceResponseDto(
         String codeNormalise,
         /** Lien FluidInvoice du document normalisé. Non nul ⇒ facture normalisée. */
         String normalizedUrl,
+        /** Date d'envoi du SMS de la facture au client. Nul ⇒ aucun SMS n'est parti. */
+        LocalDateTime shareSmsSentAt,
         String qrcode,
         String referenceCode,
         InvoiceRefundDto refund,
