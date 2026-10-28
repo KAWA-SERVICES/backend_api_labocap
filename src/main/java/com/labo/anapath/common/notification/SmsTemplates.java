@@ -68,6 +68,18 @@ public class SmsTemplates {
     public static final String DEFAUT_SMS_FACTURE =
             "Dossier {demande}: resultat dans 3 semaines. Facture: {lien}";
 
+    /**
+     * Texte livré quand un numéro de rappel est paramétré : le patient l'enregistre
+     * pour ne pas rejeter l'appel automatique « résultat disponible ». Pas de point
+     * collé au lien, que certains téléphones avalent dans l'URL.
+     */
+    public static final String DEFAUT_SMS_FACTURE_AVEC_RAPPEL =
+            "Dossier {demande}: resultat sous 3 semaines. Facture: {lien} "
+            + "Enregistrez le {numero_rappel}, il vous appellera au resultat";
+
+    /** Clé {@code setting_apps} du numéro qui appelle les patients (le téléphone passerelle FluidChat). */
+    public static final String CLE_NUMERO_RAPPEL = "rappel_numero";
+
     /** Variante pour une facture sans demande d'examen (consultation, prestation). */
     public static final String DEFAUT_SMS_FACTURE_SANS_DEMANDE = "Facture {code}: {lien}";
 
@@ -96,8 +108,12 @@ public class SmsTemplates {
     }
 
     /**
-     * Le texte du SMS de facture : jetons {@code {code}}, {@code {demande}} et
-     * {@code {lien}} remplacés, accents retirés.
+     * Le texte du SMS de facture : jetons {@code {code}}, {@code {demande}},
+     * {@code {lien}} et {@code {numero_rappel}} remplacés, accents retirés.
+     *
+     * <p>Quand {@value #CLE_NUMERO_RAPPEL} est paramétré, le texte livré demande au
+     * patient d'enregistrer ce numéro : c'est lui qui l'appellera, automatiquement,
+     * quand le résultat sera prêt — un numéro inconnu se fait rejeter.</p>
      *
      * <p>Sans accent parce qu'un seul caractère accentué fait passer le SMS en
      * Unicode, où l'unité tombe à 70 caractères : le même texte coûterait deux
@@ -111,14 +127,22 @@ public class SmsTemplates {
      * @param lien     URL publique de téléchargement
      */
     public String smsFacture(UUID branchId, String code, String demande, String lien) {
+        String numero = modele(CLE_NUMERO_RAPPEL, branchId, "").trim();
         Map<String, String> jetons = Map.of("{code}", code == null ? "" : code,
-                "{demande}", demande == null ? "" : demande, "{lien}", lien);
+                "{demande}", demande == null ? "" : demande, "{lien}", lien, "{numero_rappel}", numero);
         if (demande == null || demande.isBlank()) {
             return sansAccent(remplacer(DEFAUT_SMS_FACTURE_SANS_DEMANDE, jetons));
         }
-        String texte = sansAccent(remplacer(modele(CLE_SMS_FACTURE, branchId, DEFAUT_SMS_FACTURE), jetons));
+        // Le texte livré cède la place, dans l'ordre, tant qu'il dépasse une unité :
+        // paramétré, livré avec le numéro de rappel, livré sans. Le dernier tient
+        // toujours — c'est celui d'avant le rappel automatique.
+        String livre = numero.isEmpty() ? DEFAUT_SMS_FACTURE : DEFAUT_SMS_FACTURE_AVEC_RAPPEL;
+        String texte = sansAccent(remplacer(modele(CLE_SMS_FACTURE, branchId, livre), jetons));
         if (texte.length() > SMS_UNITE) {
-            log.warn("SMS facture paramétré trop long ({} caractères) : texte livré utilisé", texte.length());
+            log.warn("SMS facture trop long ({} caractères) : texte livré utilisé", texte.length());
+            texte = sansAccent(remplacer(livre, jetons));
+        }
+        if (texte.length() > SMS_UNITE) {
             texte = sansAccent(remplacer(DEFAUT_SMS_FACTURE, jetons));
         }
         return texte;

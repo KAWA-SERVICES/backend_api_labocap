@@ -98,7 +98,7 @@ class DisciplineParDefautDesPointsDEntreeTest {
                         new TestOrderController(testOrderService, reportService,
                                 mock(com.labo.anapath.discussion.DiscussionService.class)),
                         new ReportController(reportService, mock(NotificationService.class),
-                                mock(PdfReportService.class)),
+                                mock(PdfReportService.class), mock(com.labo.anapath.report.ReportRepository.class)),
                         new TestOrderAssignmentController(assignmentService))
                 .setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver())
                 .build();
@@ -131,7 +131,7 @@ class DisciplineParDefautDesPointsDEntreeTest {
         mvc.perform(get("/api/v1/reports/suivi/list")).andExpect(status().isOk());
 
         verify(reportService).getSuiviList(eq(BRANCH_ID), anyInt(), anyInt(), any(), any(), any(), any(),
-                any(), any(), any(), eq(Discipline.PATHOLOGY));
+                any(), any(), any(), eq(Discipline.PATHOLOGY), eq(null));
     }
 
     @Test

@@ -22,8 +22,8 @@ import org.springframework.util.StringUtils;
  * {@link #encryptionKey}, à côté de {@link #apiKey}.</p>
  *
  * <p><b>L'appel vocal ne passe pas par ici.</b> FluidPay n'expose que du SMS ;
- * l'avis vocal de disponibilité d'un résultat continue de partir vers l'API
- * OurVoice directe — voir {@code OurVoiceClient#call}.</p>
+ * l'avis vocal de disponibilité d'un résultat part par FluidChat — voir
+ * {@link FluidChatClient}.</p>
  *
  * <pre>{@code
  * app:

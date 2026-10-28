@@ -18,5 +18,15 @@ public interface NotificationService {
      */
     NotifyResponseDto notifyPatient(UUID reportId, UUID userId);
 
+    /**
+     * Dernier appel du compte rendu ; s'il est en cours, relu d'abord chez
+     * FluidChat (suivi en direct depuis l'écran).
+     */
     AppelResponseDto getAppelStatus(UUID reportId);
+
+    /**
+     * Relit un appel chez FluidChat et enregistre son issue ; un patient joint
+     * est marqué informé.
+     */
+    void actualiser(AppelByReport appel);
 }

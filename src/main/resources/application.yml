@@ -73,10 +73,13 @@ app:
     biology: ${MODULE_BIOLOGY:false}
   report:
     notify-retry:
-      # Reprise des avis de disponibilité qu'un compte-rendu validé hors de la
-      # plage d'appel 8h–18h n'a pas pu déclencher. Tous les jours à 8h, heure du
-      # laboratoire. « - » désactive la tâche ; un cron plus court sert la recette.
-      cron: ${REPORT_NOTIFY_RETRY_CRON:0 0 8 * * *}
+      # Rappel des patients dont le résultat est prêt (SMS + appel FluidChat),
+      # X heures après la validation et seulement dans la plage réglementaire
+      # (réglages rappel_* de Paramètres). « - » désactive la tâche.
+      cron: ${REPORT_NOTIFY_RETRY_CRON:0 */15 * * * *}
+    call-follow:
+      # Relecture chez FluidChat de l'issue des appels en cours. « - » désactive.
+      cron: ${REPORT_CALL_FOLLOW_CRON:0 */10 * * * *}
   # Adresse publique de l'API, telle qu'un client la voit depuis son téléphone.
   # Sert à construire le lien de téléchargement envoyé par SMS : il doit être
   # joignable depuis l'extérieur, pas seulement depuis le réseau du laboratoire.
@@ -257,6 +260,12 @@ app:
       # Expéditeur affiché sur le téléphone, 11 caractères au plus. Vide = celui
       # déclaré au compte de l'opérateur, le seul enregistré auprès de lui.
       sender: ${FLUIDPAY_SMS_SENDER:}
+  fluidchat:
+    # Appels automatiques « résultat disponible » (API d'appels de fluidchat-saas).
+    # Sans adresse ni clé, aucun appel ne part ; le SMS, lui, part quand même.
+    base-url: ${FLUIDCHAT_BASE_URL:}
+    # Jamais en dur : la clé fait sonner des téléphones aux frais du laboratoire.
+    api-key: ${FLUIDCHAT_API_KEY:}
   fluidinvoice:
     # Passerelle de facturation normalisée e-MCF / DGI (invoice.fluidpay.link).
     # Désactivée par défaut : sans clé, aucune facture ne doit partir à la DGI.

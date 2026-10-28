@@ -404,6 +404,25 @@ public class ReportServiceImpl implements ReportService {
             String dateBegin, String dateEnd,
             Boolean isUrgent, Integer statusFilter, Boolean isLate,
             Discipline discipline) {
+        return getSuiviList(branchId, page, size, search, typeOrderId, dateBegin, dateEnd,
+                isUrgent, statusFilter, isLate, discipline, null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PageResponse<ReportSuiviRowDto> getSuiviList(
+            UUID branchId, int page, int size,
+            String search, String typeOrderId,
+            String dateBegin, String dateEnd,
+            Boolean isUrgent, Integer statusFilter, Boolean isLate,
+            Discipline discipline, String rappel) {
+        if (rappel != null && !rappel.isBlank() && !"A_RAPPELER".equals(rappel)) {
+            try {
+                IssueRappel.valueOf(rappel);
+            } catch (IllegalArgumentException e) {
+                throw new InvalidOperationException("Filtre de rappel inconnu : " + rappel);
+            }
+        }
         var pageRequest = PageRequest.of(page, size);
         var resultPage = reportRepository.findSuiviRows(
                 branchId,
@@ -413,6 +432,7 @@ public class ReportServiceImpl implements ReportService {
                 (dateEnd != null && !dateEnd.isBlank()) ? dateEnd : null,
                 isUrgent, statusFilter,
                 Boolean.TRUE.equals(isLate) ? Boolean.TRUE : null,
+                (rappel != null && !rappel.isBlank()) ? rappel : null,
                 disciplineOuDefaut(discipline).name(),
                 pageRequest);
 
@@ -433,7 +453,11 @@ public class ReportServiceImpl implements ReportService {
                 Boolean.TRUE.equals(p.getIsDelivered()),
                 p.getRetrieverName(),
                 p.getRetrieverSignature(),
-                p.getDeliveryDate()
+                p.getDeliveryDate(),
+                p.getRappelIssue() != null ? IssueRappel.valueOf(p.getRappelIssue()) : null,
+                p.getRappelTentatives(),
+                p.getRappelPctEcoute(),
+                p.getRappelDate()
         )));
     }
 
@@ -1155,8 +1179,8 @@ public class ReportServiceImpl implements ReportService {
      * coquille, et chacun de ces enregistrements relancerait sinon un appel chez
      * le patient.</p>
      *
-     * <p>L'envoi lui-même est différé après le commit et exécuté hors de cette
-     * transaction — voir {@link ReportValidationNotifier}.</p>
+     * <p>Le rappel du patient, lui, ne suit pas cet événement : il part X heures
+     * plus tard — voir {@link RattrapageAvisPatientJob}.</p>
      *
      * @param statutInitial statut lu avant écriture
      * @param saved         compte-rendu tel qu'enregistré

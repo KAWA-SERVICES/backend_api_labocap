@@ -3,7 +3,9 @@ package com.labo.anapath.dashboard;
 import com.labo.anapath.common.Discipline;
 import com.labo.anapath.common.dto.ApiResponse;
 import com.labo.anapath.common.security.UserPrincipal;
+import com.labo.anapath.report.NotificationServiceImpl;
 import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -12,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -30,7 +33,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/v1/dashboard")
 @RequiredArgsConstructor
-// Sur la classe : treize routes, et la prochaine ajoutée hérite du garde sans
+// Sur la classe : quatorze routes, et la prochaine ajoutée hérite du garde sans
 // qu'on y pense. Les montants exigent un droit de plus, posé sur la méthode —
 // en redisant le premier, car une annotation de méthode remplace celle de la
 // classe au lieu de s'y ajouter.
@@ -139,5 +142,21 @@ public class DashboardController {
             @AuthenticationPrincipal UserPrincipal principal) {
         return ResponseEntity.ok(ApiResponse.success(
                 dashboardService.getDoctorOrdersToday(principal.getId(), principal.getBranchId(), discipline)));
+    }
+
+    /**
+     * Rappels automatiques des patients : compteurs par issue sur la période
+     * (7 derniers jours par défaut) et nombre de patients à rappeler, pour la
+     * section du tableau de bord et le bandeau affiché sur toutes les pages.
+     */
+    @GetMapping("/rappels")
+    public ResponseEntity<ApiResponse<DashboardDto.Rappels>> getRappels(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateBegin,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateEnd,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        LocalDate fin = dateEnd != null ? dateEnd : LocalDate.now(NotificationServiceImpl.FUSEAU_LABORATOIRE);
+        LocalDate debut = dateBegin != null ? dateBegin : fin.minusDays(6);
+        return ResponseEntity.ok(ApiResponse.success(
+                dashboardService.getRappels(principal.getBranchId(), debut, fin)));
     }
 }

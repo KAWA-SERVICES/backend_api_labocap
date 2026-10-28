@@ -39,51 +39,6 @@ class OurVoiceClientTest {
     }
 
     @Test
-    @DisplayName("call - envoie POST avec Authorization Bearer et retourne data.id")
-    void call_sendsRequestAndReturnsAppelId() {
-        mockServer.expect(requestTo(ENDPOINT))
-                .andExpect(method(HttpMethod.POST))
-                .andExpect(header("Authorization", "Bearer " + TOKEN))
-                .andRespond(withSuccess(
-                        "{\"data\":{\"id\":\"appel-abc-123\"}}",
-                        MediaType.APPLICATION_JSON));
-
-        String appelId = client.call(ENDPOINT, TOKEN, TO, AUDIO_URL);
-
-        assertThat(appelId).isEqualTo("appel-abc-123");
-        mockServer.verify();
-    }
-
-    @Test
-    @DisplayName("call - payload contient to et audio_url")
-    void call_payloadContainsToAndAudioUrl() {
-        mockServer.expect(requestTo(ENDPOINT))
-                .andExpect(method(HttpMethod.POST))
-                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"" + TO + "\"")))
-                .andExpect(content().string(org.hamcrest.Matchers.containsString(AUDIO_URL)))
-                .andRespond(withSuccess(
-                        "{\"data\":{\"id\":\"appel-xyz\"}}",
-                        MediaType.APPLICATION_JSON));
-
-        client.call(ENDPOINT, TOKEN, TO, AUDIO_URL);
-
-        mockServer.verify();
-    }
-
-    @Test
-    @DisplayName("call - réponse 500 → InvalidOperationException")
-    void call_serverError_throwsInvalidOperationException() {
-        mockServer.expect(requestTo(ENDPOINT))
-                .andExpect(method(HttpMethod.POST))
-                .andRespond(withStatus(HttpStatus.INTERNAL_SERVER_ERROR));
-
-        assertThatThrownBy(() -> client.call(ENDPOINT, TOKEN, TO, AUDIO_URL))
-                .isInstanceOf(InvalidOperationException.class)
-                .hasMessageContaining("OurVoice");
-    }
-
-    @Test
     @DisplayName("sms - envoie POST avec Authorization Bearer et sender_id fixe")
     void sms_sendsRequestWithCorrectHeaders() {
         mockServer.expect(requestTo(SMS_ENDPOINT))

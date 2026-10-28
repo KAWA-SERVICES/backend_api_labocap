@@ -76,7 +76,8 @@ class TableauDeBordParDisciplineTest {
     private final DashboardServiceImpl service = new DashboardServiceImpl(
             patientRepository, clientRepository, testOrderRepository, invoiceRepository,
             reportRepository, userRepository, contratRepository, labTestRepository,
-            appointmentRepository, modules);
+            appointmentRepository, mock(com.labo.anapath.report.AppelByReportRepository.class),
+            mock(com.labo.anapath.report.ReglagesDeRappel.class), modules);
 
     private final ObjectMapper json = new ObjectMapper();
 

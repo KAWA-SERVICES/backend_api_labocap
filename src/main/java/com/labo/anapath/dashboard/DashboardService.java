@@ -2,6 +2,7 @@ package com.labo.anapath.dashboard;
 
 import com.labo.anapath.common.Discipline;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -61,4 +62,7 @@ public interface DashboardService {
     List<DashboardDto.DoctorOrder> getDoctorOrdersToday(UUID userId, UUID branchId);
 
     List<DashboardDto.DoctorOrder> getDoctorOrdersToday(UUID userId, UUID branchId, Discipline discipline);
+
+    /** Rappels des patients de l'agence, du {@code debut} inclus à la {@code fin} incluse. */
+    DashboardDto.Rappels getRappels(UUID branchId, LocalDate debut, LocalDate fin);
 }

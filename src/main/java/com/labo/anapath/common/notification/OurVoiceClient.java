@@ -22,25 +22,6 @@ public class OurVoiceClient {
 
     private final RestTemplate restTemplate;
 
-    /** Lance un appel vocal via OurVoice. Retourne l'appelId (data.id). */
-    @SuppressWarnings("unchecked")
-    public String call(String endpoint, String accessToken, String to, String audioUrl) {
-        try {
-            HttpHeaders headers = buildHeaders(accessToken);
-            Map<String, Object> body = Map.of("to", List.of(to), "audio_url", audioUrl);
-            ResponseEntity<Map> response = restTemplate.exchange(
-                    endpoint, HttpMethod.POST, new HttpEntity<>(body, headers), Map.class);
-            if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
-                throw new InvalidOperationException("Erreur OurVoice lors de l'appel vocal");
-            }
-            Map<String, Object> data = (Map<String, Object>) response.getBody().get("data");
-            return (String) data.get("id");
-        } catch (RestClientException e) {
-            log.error("OurVoice call failed: {}", e.getMessage());
-            throw new InvalidOperationException("Erreur OurVoice lors de l'appel vocal: " + e.getMessage());
-        }
-    }
-
     /** Envoie un SMS via OurVoice. */
     public void sms(String endpoint, String accessToken, String to, String messageBody) {
         try {
