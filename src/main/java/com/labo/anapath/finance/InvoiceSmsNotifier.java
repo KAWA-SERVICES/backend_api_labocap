@@ -1,5 +1,7 @@
 package com.labo.anapath.finance;
 
+import com.labo.anapath.common.exception.InvalidOperationException;
+import com.labo.anapath.common.exception.ResourceNotFoundException;
 import com.labo.anapath.common.notification.PhoneNumbers;
 import com.labo.anapath.common.notification.SmsSender;
 import com.labo.anapath.common.notification.SmsTemplates;
@@ -13,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.event.TransactionalEventListener;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 /**
  * Prévient le client par SMS qu'une facture validée est téléchargeable.
@@ -37,6 +40,9 @@ import java.time.LocalDateTime;
 @Slf4j
 public class InvoiceSmsNotifier {
 
+    /** {@code status_invoice} d'une facture d'avoir. */
+    private static final int STATUT_AVOIR = 1;
+
     private final InvoiceRepository invoiceRepository;
     private final InvoiceShareLinkService shareLinkService;
     private final SmsTemplates smsTemplates;
@@ -58,7 +64,7 @@ public class InvoiceSmsNotifier {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onInvoiceValidated(InvoiceValidatedEvent event) {
         // Global : réagit à un événement, hors requête, donc sans agence courante.
-        Invoice invoice = invoiceRepository.findById(event.invoiceId()).orElse(null);
+        Invoice invoice = invoiceRepository.findWithLockById(event.invoiceId()).orElse(null);
         if (invoice == null) {
             log.warn("SMS facture ignoré : facture {} introuvable", event.invoiceId());
             return;
@@ -70,29 +76,68 @@ public class InvoiceSmsNotifier {
             return;
         }
 
-        String destinataire = PhoneNumbers.toInternational(telephoneDuClient(invoice));
-        if (destinataire == null) {
-            log.info("SMS facture {} non envoyé : aucun numéro de téléphone connu",
-                    invoice.getCode());
-            return;
-        }
-
         try {
-            String lien = shareLinkService.urlDeTelechargement(invoice);
-            String message = smsTemplates.smsFacture(
-                    invoice.getBranchId(), invoice.getCode(), codeDeLaDemande(invoice), lien);
-            // Clé d'idempotence stable : l'identifiant de la facture. Deux
-            // événements pour la même pièce ne doivent produire qu'un envoi, et
-            // qu'une facturation.
-            smsSender.envoyer(destinataire, message, SmsSender.SOURCE_FACTURE, invoice.getId());
-            // Après la réponse de la passerelle, et pas avant : marquer plus tôt
-            // ferait passer un envoi échoué pour un envoi réussi, sans rattrapage.
-            invoice.setShareSmsSentAt(LocalDateTime.now());
-            invoiceRepository.save(invoice);
+            String destinataire = envoyer(invoice);
             log.info("SMS de facture {} envoyé au {}", invoice.getCode(), destinataire);
+        } catch (InvalidOperationException e) {
+            log.info("SMS facture {} non envoyé : {}", invoice.getCode(), e.getMessage());
         } catch (RuntimeException e) {
             log.error("SMS de facture {} non envoyé : {}", invoice.getCode(), e.getMessage());
         }
+    }
+
+    /**
+     * Envoi à la demande d'un agent, quand le SMS automatique n'est jamais parti
+     * (passerelle en panne au moment de la normalisation, numéro ajouté depuis).
+     *
+     * <p>Un SMS déjà parti n'est pas renvoyé : le patient le recevrait deux fois
+     * et le laboratoire le paierait deux fois.</p>
+     *
+     * @return le numéro auquel le SMS est parti
+     * @throws InvalidOperationException si la facture n'est pas normalisée, est un
+     *                                   avoir, a déjà son SMS ou n'a aucun numéro
+     * @throws com.labo.anapath.common.exception.ExternalApiException si la passerelle refuse
+     *                                   ou ne répond pas
+     */
+    @Transactional
+    public String envoyerALaDemande(UUID invoiceId, UUID branchId) {
+        Invoice invoice = invoiceRepository.findWithLockByIdAndBranchId(invoiceId, branchId)
+                .orElseThrow(() -> new ResourceNotFoundException("Facture", invoiceId));
+        if (invoice.getNormalizedUrl() == null) {
+            throw new InvalidOperationException("Normalisez la facture avant d'envoyer son SMS.");
+        }
+        if (invoice.getStatusInvoice() == STATUT_AVOIR) {
+            throw new InvalidOperationException("Une facture d'avoir n'a pas de SMS.");
+        }
+        if (invoice.getShareSmsSentAt() != null) {
+            throw new InvalidOperationException("Le SMS de cette facture est déjà parti.");
+        }
+        return envoyer(invoice);
+    }
+
+    /**
+     * Envoie le SMS et marque la facture.
+     *
+     * <p>La marque est posée après la réponse de la passerelle, et pas avant :
+     * marquer plus tôt ferait passer un envoi échoué pour un envoi réussi, sans
+     * rattrapage.</p>
+     */
+    private String envoyer(Invoice invoice) {
+        String destinataire = PhoneNumbers.toInternationalA10Chiffres(telephoneDuClient(invoice));
+        if (destinataire == null) {
+            throw new InvalidOperationException(
+                    "Aucun numéro de téléphone pour ce patient : renseignez-le sur sa fiche.");
+        }
+        String lien = shareLinkService.urlDeTelechargement(invoice);
+        String message = smsTemplates.smsFacture(
+                invoice.getBranchId(), invoice.getCode(), codeDeLaDemande(invoice), lien);
+        // Clé d'idempotence stable : l'identifiant de la facture. Deux envois pour
+        // la même pièce — événement rejoué, double clic — ne produisent qu'un SMS,
+        // et qu'une facturation.
+        smsSender.envoyer(destinataire, message, SmsSender.SOURCE_FACTURE, invoice.getId());
+        invoice.setShareSmsSentAt(LocalDateTime.now());
+        invoiceRepository.save(invoice);
+        return destinataire;
     }
 
     /**
