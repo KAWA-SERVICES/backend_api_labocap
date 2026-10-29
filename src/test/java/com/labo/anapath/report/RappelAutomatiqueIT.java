@@ -91,12 +91,38 @@ class RappelAutomatiqueIT {
                 Integer.class, report.getId())).isPositive();
     }
 
+    @Test
+    @DisplayName("suivi : un appel joint est relu une fois, le patient est marqué informé")
+    void appelJointReluUneFois() {
+        when(reglagesDeRappel.delaiHeures()).thenReturn(24);
+        when(reglagesDeRappel.audio(any())).thenReturn("custom/16");
+        when(reglagesDeRappel.plage()).thenReturn(ReglagesDeRappel.Plage.REGLEMENTAIRE);
+        when(fluidChatClient.lancer(anyString(), anyString(), any(), anyString()))
+                .thenReturn(new FluidChatClient.Appel(302, "queued", null, null, 0));
+        when(fluidChatClient.lire(302L))
+                .thenReturn(new FluidChatClient.Appel(302, "answered", "completed", 100, 1));
+        Report report = compteRenduValideIlYA30h("26-3803");
+        job.rattraperAvisEnAttente();
+
+        job.suivreLesAppels();
+        job.suivreLesAppels();
+
+        verify(fluidChatClient, times(1)).lire(302L);
+        assertThat(appelRepository.findFirstByReportIdOrderByCreatedAtDesc(report.getId()))
+                .hasValueSatisfying(a -> assertThat(a.getIssue()).isEqualTo(IssueRappel.JOINT));
+        assertThat(reportRepository.findById(report.getId()).orElseThrow().isCalled()).isTrue();
+    }
+
     private Report compteRenduValideIlYA30h() {
+        return compteRenduValideIlYA30h("26-3667");
+    }
+
+    private Report compteRenduValideIlYA30h(String code) {
         Patient patient = new Patient();
         patient.setBranchId(AGENCE);
         patient.setFirstname("Awa");
         patient.setLastname("Kora");
-        patient.setTelephone1("0161157392");
+        patient.setTelephone1("0197" + code.replace("-", ""));
         patient = patientRepository.save(patient);
 
         TestOrder bon = new TestOrder();
@@ -104,13 +130,13 @@ class RappelAutomatiqueIT {
         bon.setStatus(TestOrderStatus.VALIDATED);
         bon.setPrelevementDate(LocalDate.now());
         bon.setPatient(patient);
-        bon.setCode("26-3667");
+        bon.setCode(code);
         bon = testOrderRepository.save(bon);
 
         Report r = new Report();
         r.setBranchId(AGENCE);
         r.setTestOrder(bon);
-        r.setCode("CO26-3667");
+        r.setCode("CO" + code);
         r.setStatus(ReportStatus.VALIDATED);
         r.setSignatureDate(LocalDateTime.now().minusHours(30));
         return reportRepository.save(r);
