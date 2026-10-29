@@ -106,6 +106,10 @@ public class NotificationServiceImpl implements NotificationService {
     @Override
     @Transactional
     public void actualiser(AppelByReport appel) {
+        // Rechargé dans cette transaction : la tâche de suivi passe une ligne lue
+        // hors transaction, dont le compte rendu (paresseux) ne se chargerait plus.
+        // Dans getAppelStatus, la ligne est déjà gérée : c'est la même instance.
+        appel = appelByReportRepository.findById(appel.getId()).orElse(appel);
         appliquer(appel, fluidChatClient.lire(Long.parseLong(appel.getAppelId())));
         appelByReportRepository.save(appel);
         // Joint : le patient est informé, comme si le secrétariat l'avait marqué.
