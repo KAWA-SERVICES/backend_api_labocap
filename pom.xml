@@ -23,7 +23,7 @@
         <mapstruct.version>1.6.3</mapstruct.version>
         <lombok.version>1.18.48</lombok.version>
         <jjwt.version>0.13.0</jjwt.version>
-        <springdoc.version>3.1.1</springdoc.version>
+        <springdoc.version>3.2.0</springdoc.version>
         <!-- 1.19 parle l'API Docker 1.32, refusée par Docker 29 (minimum 1.44) : sans ce
              saut, aucun test Testcontainers ne démarre sur un démon récent. -->
         <testcontainers.version>1.21.4</testcontainers.version>
