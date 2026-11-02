@@ -16,6 +16,10 @@ public interface TestOrderAssignmentRepository extends JpaRepository<TestOrderAs
     /** Dans l'agence donnée seulement : un identifiant d'ailleurs est introuvable. */
     Optional<TestOrderAssignment> findByIdAndBranchId(UUID id, UUID branchId);
 
+    /** Les lots d'un médecin pour un jour, dans une agence — l'assistant y ajoute ses affectations. */
+    java.util.List<TestOrderAssignment> findByUserIdAndBranchIdAndDate(UUID userId, UUID branchId,
+                                                                    java.time.LocalDate date);
+
     long countByBranchId(UUID branchId);
 
     /**

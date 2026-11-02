@@ -276,6 +276,21 @@ app:
     operator-name: ${FLUIDINVOICE_OPERATOR_NAME:CENTRE ADECHINA ANATOMIE PATHOLOGIQUE}
     # A = exonéré. La classification fiscale engage le contribuable (Art. 168 CGI).
     tax-group: ${FLUIDINVOICE_TAX_GROUP:A}
+  elevenlabs:
+    # Dictée vocale des comptes rendus (Speech to Text). Sans clé, le bouton
+    # micro répond « service indisponible ». Jamais en dur : facturée à la seconde.
+    api-key: ${ELEVENLABS_API_KEY:}
+    # Résidence UE : https://api.eu.residency.elevenlabs.io
+    base-url: ${ELEVENLABS_BASE_URL:https://api.elevenlabs.io}
+    model-id: ${ELEVENLABS_MODEL_ID:scribe_v2_medical}
+    # true : ElevenLabs ne garde ni audio ni texte (offre Entreprise exigée,
+    # sinon les requêtes échouent). Ne passer à false qu'en essai, sans patient.
+    zero-retention: ${ELEVENLABS_ZERO_RETENTION:true}
+    # Vocabulaire anapath, séparé par des virgules ; 100 termes au plus.
+    mots-cles: ${ELEVENLABS_MOTS_CLES:}
+  dictee:
+    # Minutes d'audio transcrites par agence et par mois calendaire.
+    quota-mensuel-minutes: ${DICTEE_QUOTA_MENSUEL_MINUTES:1200}
   alerts:
     report:
       days: ${ALERT_REPORT_DAYS:18}

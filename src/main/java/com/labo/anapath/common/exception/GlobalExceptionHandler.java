@@ -94,6 +94,20 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * Les refus de l'assistant IA avant toute réponse en flux : chacun porte
+     * son code HTTP (409 conversation occupée, 429 quota ou débit, 503 pas
+     * configuré…). Fonctionnement attendu, pas un incident.
+     *
+     * @param ex exception levée
+     * @return réponse au code porté par l'exception
+     */
+    @ExceptionHandler(com.labo.anapath.assistant.AssistantException.class)
+    public ResponseEntity<ApiResponse<Object>> handleAssistant(com.labo.anapath.assistant.AssistantException ex) {
+        log.info("Assistant : {} — {}", ex.code(), ex.getMessage());
+        return ResponseEntity.status(ex.statut()).body(ApiResponse.error(ex.getMessage()));
+    }
+
+    /**
      * Gère la réaffectation d'une demande déjà confiée à un autre médecin.
      *
      * <p>Journalisée en information et non en avertissement : refuser une

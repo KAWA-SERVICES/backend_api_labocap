@@ -190,7 +190,8 @@ public class PatientServiceImpl implements PatientService {
         List<TestOrderSummaryDto> orderSummaries = orders.stream()
                 .map(o -> new TestOrderSummaryDto(
                         o.getId(), o.getCode(), o.getStatus().name(),
-                        o.getPrelevementDate(), o.getCreatedAt()))
+                        o.getPrelevementDate(), o.getCreatedAt(),
+                        o.getTypeOrder() == null ? null : o.getTypeOrder().getTitle()))
                 .toList();
 
         // Calculer les totaux financiers en agrégeant toutes les factures
