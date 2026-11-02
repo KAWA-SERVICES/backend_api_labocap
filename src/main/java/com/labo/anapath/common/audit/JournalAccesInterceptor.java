@@ -29,7 +29,7 @@ import java.util.regex.Pattern;
 public class JournalAccesInterceptor implements HandlerInterceptor {
 
     private static final String UUID_RE = "([0-9a-fA-F-]{36})";
-    private static final Pattern PATIENT = Pattern.compile("^/api/v1/patients/" + UUID_RE + "$");
+    private static final Pattern PATIENT = Pattern.compile("^/api/v1/patients/" + UUID_RE + "(?:/profile)?$");
     private static final Pattern DEMANDE = Pattern.compile("^/api/v1/test-orders/" + UUID_RE + "(?:/images|/historique-patient)?$");
     private static final Pattern DOSSIERS_HORS_LIGNE = Pattern.compile("^/api/v1/test-orders/dossiers-hors-ligne$");
     private static final Pattern COMPTE_RENDU = Pattern.compile("^/api/v1/reports/" + UUID_RE + "$");
@@ -78,7 +78,7 @@ public class JournalAccesInterceptor implements HandlerInterceptor {
     }
 
     /** Le navigateur, sans le garder en clair : une empreinte suffit à distinguer deux postes. */
-    static String empreinte(String userAgent) {
+    public static String empreinte(String userAgent) {
         if (userAgent == null) return null;
         try {
             byte[] h = MessageDigest.getInstance("SHA-256").digest(userAgent.getBytes(StandardCharsets.UTF_8));
@@ -90,7 +90,7 @@ public class JournalAccesInterceptor implements HandlerInterceptor {
 
     /** Les routes sur lesquelles l'intercepteur est posé. */
     public static final List<String> CHEMINS = List.of(
-            "/api/v1/patients/*", "/api/v1/test-orders/*", "/api/v1/test-orders/*/images",
+            "/api/v1/patients/*", "/api/v1/patients/*/profile", "/api/v1/test-orders/*", "/api/v1/test-orders/*/images",
             "/api/v1/test-orders/*/historique-patient", "/api/v1/test-orders/dossiers-hors-ligne",
             "/api/v1/reports/*", "/api/v1/reports/*/pdf", "/api/v1/invoices/*", "/api/v1/files/**");
 }

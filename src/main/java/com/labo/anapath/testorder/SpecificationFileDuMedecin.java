@@ -1,5 +1,6 @@
 package com.labo.anapath.testorder;
 
+import com.labo.anapath.common.Discipline;
 import com.labo.anapath.report.Report;
 import com.labo.anapath.report.ReportStatus;
 import jakarta.persistence.criteria.JoinType;
@@ -115,6 +116,56 @@ final class SpecificationFileDuMedecin {
                         : demande.get("id").in(filtre.demandes()));
             }
             return cb.and(predicats.toArray(new Predicate[0]));
+        };
+    }
+
+    /**
+     * La file restant à faire, dans l'ordre où la traiter.
+     *
+     * <p>Urgents d'abord, puis en retard — du plus en retard au moins en
+     * retard —, puis le reste, du lot le plus ancien au plus récent. Ordre
+     * validé par le laboratoire le 2026-11-02 pour l'assistant IA.</p>
+     *
+     * <p>« Urgent » et « en retard » reprennent mot pour mot les critères des
+     * filtres {@code urgents} et {@code enRetard} de {@link #filtrer} : un
+     * dossier classé urgent ici est un dossier que le filtre « urgents »
+     * montre, et inversement. Seuls les dossiers sans compte rendu validé ni
+     * remis sont gardés — un dossier rendu n'est plus « à traiter ».</p>
+     *
+     * <p>Le tri est posé par la spécification elle-même, et seulement sur la
+     * requête des lignes : la requête de comptage n'en veut pas.</p>
+     */
+    static Specification<TestOrderAssignmentDetail> parPriorite(
+            UUID docteurId, LocalDate aujourdhui, int joursAvantAlerte, Discipline discipline) {
+        FiltreFileDuMedecin filtre = new FiltreFileDuMedecin(null, null, null, null, null, null, null,
+                true, null, discipline);
+        Specification<TestOrderAssignmentDetail> base = filtrer(docteurId, aujourdhui, joursAvantAlerte, filtre);
+        return (racine, requete, cb) -> {
+            Predicate filtres = base.toPredicate(racine, requete, cb);
+            var lot = racine.join("testOrderAssignment");
+            var demande = racine.join("testOrder", JoinType.LEFT);
+            Predicate nonRendu = cb.not(cb.exists(comptesRendus(requete, cb, demande,
+                    ReportStatus.VALIDATED, ReportStatus.DELIVERED)));
+            if (requete.getResultType() != Long.class && requete.getResultType() != long.class) {
+                Predicate urgent = cb.and(cb.isTrue(demande.get("isUrgent")),
+                        demande.get("status").in(TestOrderStatus.DELIVERED, TestOrderStatus.CANCELLED).not());
+                Predicate enRetard = cb.lessThan(demande.get("createdAt"),
+                        aujourdhui.minusDays(joursAvantAlerte).atStartOfDay());
+                var rang = cb.<Integer>selectCase()
+                        .when(urgent, 0)
+                        .when(enRetard, 1)
+                        .otherwise(2);
+                var ageDuRetard = cb.<java.time.LocalDateTime>selectCase()
+                        .when(cb.and(cb.not(urgent), enRetard), demande.<java.time.LocalDateTime>get("createdAt"))
+                        .otherwise(cb.nullLiteral(java.time.LocalDateTime.class));
+                requete.orderBy(
+                        cb.asc(rang),
+                        cb.asc(ageDuRetard),
+                        cb.asc(lot.get("date")),
+                        cb.asc(racine.get("createdAt")),
+                        cb.asc(racine.get("id")));
+            }
+            return cb.and(filtres, nonRendu);
         };
     }
 

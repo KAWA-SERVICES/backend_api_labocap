@@ -120,4 +120,23 @@ public interface TestOrderAssignmentService {
     DemandeDuMedecinDto changerStatutDuMedecin(java.util.UUID detailId,
                                                String statut,
                                                java.util.UUID branchId);
+
+    /**
+     * Les dossiers restant à traiter du médecin, dans l'ordre où les prendre :
+     * urgents, puis en retard (du plus ancien), puis par date de lot.
+     */
+    java.util.List<DemandeDuMedecinDto> prioritesDeLaFile(java.util.UUID docteurId, int limite,
+                                                         com.labo.anapath.common.Discipline discipline);
+
+    /**
+     * Confie une demande à un médecin, dans son lot du jour (créé au besoin).
+     *
+     * <p>Le chemin de l'écran des lots, en un geste : c'est sur les lots que se
+     * calcule la file du médecin. Refuse un destinataire qui n'est pas médecin
+     * signataire actif. Une demande déjà confiée à un autre médecin lève
+     * {@link com.labo.anapath.common.exception.ReaffectationNonConfirmeeException}
+     * sauf si {@code confirmerReaffectation}.</p>
+     */
+    AssignmentDetailResponseDto affecterAuMedecin(java.util.UUID testOrderId, java.util.UUID medecinId,
+                                                  boolean confirmerReaffectation, java.util.UUID branchId);
 }
