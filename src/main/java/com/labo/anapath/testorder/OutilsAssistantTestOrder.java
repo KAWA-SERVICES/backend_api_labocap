@@ -131,7 +131,7 @@ public class OutilsAssistantTestOrder {
                   "statut":{"type":"string","enum":["PENDING","VALIDATED","DELIVERED","CANCELLED"],
                             "description":"PENDING = enregistrée, VALIDATED = validée (compte rendu ouvert), DELIVERED = remise."},
                   "statutCompteRendu":{"type":"string","enum":["DRAFT","PENDING_REVIEW","VALIDATED"],
-                            "description":"DRAFT = en rédaction, PENDING_REVIEW = en attente de validation, VALIDATED = validé."},
+                            "description":"DRAFT = compte rendu pas terminé : en cours, en attente, pas encore validé (« En attente » à l'écran Comptes rendus). VALIDATED = terminé et validé. PENDING_REVIEW ne sert qu'en biologie."},
                   "nonAffectees":{"type":"boolean","description":"Seulement les demandes qu'aucun médecin n'a encore."},
                   "creeesAvant":{"type":"string","format":"date","description":"Enregistrées au plus tard ce jour (AAAA-MM-JJ) : pour les retards."},
                   "limite":{"type":"integer","minimum":1,"maximum":30,"description":"15 par défaut."}},
