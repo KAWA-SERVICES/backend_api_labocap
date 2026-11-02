@@ -756,4 +756,48 @@ public class TestOrderAssignmentServiceImpl implements TestOrderAssignmentServic
     private List<String> decoderEtiquettes(String brut) {
         return Etiquettes.decoder(objectMapper, brut);
     }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<DemandeDuMedecinDto> prioritesDeLaFile(UUID docteurId, int limite, Discipline discipline) {
+        var lignes = detailRepository.findAll(
+                SpecificationFileDuMedecin.parPriorite(docteurId, LocalDate.now(), joursAvantAlerte,
+                        disciplineOuDefaut(discipline)),
+                PageRequest.of(0, Math.max(1, Math.min(limite, 50)))).getContent();
+        var etats = etatsDesComptesRendus(lignes);
+        return lignes.stream().map(d -> versDemandeDuMedecin(d, etats)).toList();
+    }
+
+    @Override
+    @Transactional
+    public AssignmentDetailResponseDto affecterAuMedecin(UUID testOrderId, UUID medecinId,
+                                                         boolean confirmerReaffectation, UUID branchId) {
+        User medecin = userRepository.findSignataires().stream()
+                .filter(u -> u.getId().equals(medecinId) && u.isActive())
+                .findFirst()
+                .orElseThrow(() -> new com.labo.anapath.common.exception.BusinessException(
+                        "Ce destinataire n'est pas un médecin actif du laboratoire."));
+        TestOrder order = testOrderRepository.findByIdAndBranchId(testOrderId, branchId)
+                .orElseThrow(() -> new ResourceNotFoundException("Bon d'examen", testOrderId));
+        Discipline voulue = disciplineOuDefaut(order.getDiscipline());
+        LocalDate aujourdhui = LocalDate.now();
+        UUID lot = assignmentRepository.findByUserIdAndBranchIdAndDate(medecin.getId(), branchId, aujourdhui).stream()
+                .filter(l -> l.getDetails().stream()
+                        .filter(TestOrderAssignmentDetail::estCourante)
+                        .map(TestOrderAssignmentDetail::getTestOrder)
+                        .filter(java.util.Objects::nonNull)
+                        .allMatch(o -> disciplineOuDefaut(o.getDiscipline()) == voulue))
+                .map(TestOrderAssignment::getId)
+                .findFirst()
+                .orElseGet(() -> {
+                    AssignmentRequestDto nouveau = new AssignmentRequestDto();
+                    nouveau.setUserId(medecin.getId());
+                    nouveau.setDate(aujourdhui);
+                    return create(nouveau, branchId).id();
+                });
+        AssignmentDetailRequestDto ligne = new AssignmentDetailRequestDto();
+        ligne.setTestOrderId(testOrderId);
+        ligne.setConfirmerReaffectation(confirmerReaffectation);
+        return addDetail(lot, ligne);
+    }
 }

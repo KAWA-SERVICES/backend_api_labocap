@@ -18,11 +18,13 @@ import java.util.UUID;
  * @param status           statut de la demande (ex. : "PENDING", "VALIDATED", "DELIVERED")
  * @param prelevementDate  date à laquelle le prélèvement a été réalisé
  * @param createdAt        date et heure de création de la demande
+ * @param typeExamen       le type de demande (« Biopsie », « Pièce opératoire »…), ou {@code null}
  */
 public record TestOrderSummaryDto(
         UUID id,
         String code,
         String status,
         LocalDate prelevementDate,
-        LocalDateTime createdAt
+        LocalDateTime createdAt,
+        String typeExamen
 ) {}

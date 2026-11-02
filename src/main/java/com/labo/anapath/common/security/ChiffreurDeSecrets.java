@@ -103,6 +103,24 @@ public class ChiffreurDeSecrets {
     }
 
     /**
+     * Une sous-clé propre à un usage, dérivée de la clé des secrets (HMAC-SHA256
+     * de l'usage) : ce qu'on empreinte avec ne peut pas se retrouver par
+     * dictionnaire sans la clé, et deux usages n'empreintent pas pareil.
+     *
+     * @return 32 octets, ou {@code null} si aucune clé n'est configurée
+     */
+    public byte[] deriver(String usage) {
+        if (cle == null) return null;
+        try {
+            javax.crypto.Mac mac = javax.crypto.Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(cle.getEncoded(), "HmacSHA256"));
+            return mac.doFinal(usage.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        } catch (java.security.GeneralSecurityException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /**
      * Chiffre un secret, ou rend nul si aucune clé n'est configurée.
      *
      * <p>Rendre nul plutôt que lever : l'appelant enregistre alors une ligne
