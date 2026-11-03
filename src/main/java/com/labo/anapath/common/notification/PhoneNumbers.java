@@ -5,13 +5,13 @@ package com.labo.anapath.common.notification;
  *
  * <p><b>RÈGLE R7.</b> Les numéros sont saisis au format local béninois
  * ({@code 97000001}) alors qu'OurVoice attend l'indicatif pays collé au numéro
- * ({@code 22997000001}). La règle vivait en dur, dupliquée, dans le service de
- * notification des comptes-rendus ; la notification des factures en a le même
+ * ({@code 2290197000001}, « 01 » compris depuis la réforme du 30/11/2024).
+ * La règle vivait en dur, dupliquée, dans le service de notification des comptes-rendus ; la notification des factures en a le même
  * besoin, d'où cette extraction.</p>
  *
  * <p>La normalisation va au-delà du simple préfixe : les numéros réels portent
  * des espaces, des points ou un {@code +} de tête, et un numéro déjà international
- * ne doit pas se voir préfixer une seconde fois — {@code 22922997000001} partirait
+ * ne doit pas se voir préfixer une seconde fois — {@code 2292290197000001} partirait
  * chez OurVoice sans qu'aucune erreur ne remonte, le SMS étant simplement perdu.</p>
  */
 public final class PhoneNumbers {
@@ -19,7 +19,7 @@ public final class PhoneNumbers {
     /** Indicatif du Bénin, sans {@code +}, tel qu'attendu par OurVoice. */
     public static final String INDICATIF_BENIN = "229";
 
-    /** Longueur d'un numéro béninois sans indicatif. */
+    /** Longueur d'un ancien numéro béninois (avant le 30/11/2024), sans indicatif. */
     private static final int LONGUEUR_NUMERO_LOCAL = 8;
 
     private PhoneNumbers() {
@@ -34,6 +34,17 @@ public final class PhoneNumbers {
      *         {@code null} si l'entrée est vide ou ne contient aucun chiffre
      */
     public static String toInternational(String numero) {
+        String international = avecIndicatif(numero);
+        // Depuis le 30 novembre 2024, un numéro béninois fait 10 chiffres : « 01 »
+        // suivi de l'ancien numéro. 11 chiffres = 229 + un ancien numéro à 8 chiffres,
+        // qui n'aboutit plus : sans le « 01 », la passerelle en fait un numéro à 14
+        // chiffres et le SMS ou l'appel, accepté, n'arrive jamais.
+        return international != null && international.length() == INDICATIF_BENIN.length() + LONGUEUR_NUMERO_LOCAL
+                ? INDICATIF_BENIN + "01" + international.substring(INDICATIF_BENIN.length())
+                : international;
+    }
+
+    private static String avecIndicatif(String numero) {
         if (numero == null) {
             return null;
         }
@@ -58,21 +69,5 @@ public final class PhoneNumbers {
             return chiffres;
         }
         return INDICATIF_BENIN + chiffres;
-    }
-
-    /**
-     * Comme {@link #toInternational}, en ajoutant le « 01 » qu'un ancien numéro
-     * béninois à 8 chiffres a reçu le 30 novembre 2024 : {@code 97000001} part en
-     * {@code 2290197000001}. Sans lui, la passerelle en fait un numéro à 14
-     * chiffres et le SMS, accepté, n'arrive jamais.
-     *
-     * <p>Réservé pour l'instant au SMS de la facture normalisée.</p>
-     */
-    public static String toInternationalA10Chiffres(String numero) {
-        String international = toInternational(numero);
-        // 11 chiffres = 229 + un ancien numéro à 8 chiffres.
-        return international != null && international.length() == INDICATIF_BENIN.length() + 8
-                ? INDICATIF_BENIN + "01" + international.substring(INDICATIF_BENIN.length())
-                : international;
     }
 }

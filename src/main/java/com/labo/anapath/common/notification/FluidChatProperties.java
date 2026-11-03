@@ -26,9 +26,23 @@ public class FluidChatProperties {
     /** Clé d'application ({@code fc_live_…}), créée dans Réglages › API de FluidChat. */
     private String apiKey;
 
+    /**
+     * Les SMS partent par FluidChat ({@code POST /v1/api/sms}) au lieu de FluidPay.
+     *
+     * <p>Éteint par défaut : la route n'existe qu'à partir de la version de
+     * fluidchat-saas qui porte le crédit prépayé. Allumer l'interrupteur après
+     * son déploiement, sans redéployer labsys dans l'ordre inverse.</p>
+     */
+    private boolean smsEnabled;
+
     /** Vrai si l'adresse et la clé sont renseignées. */
     public boolean isUsable() {
         return StringUtils.hasText(baseUrl) && StringUtils.hasText(apiKey);
+    }
+
+    /** Vrai si les SMS doivent partir par FluidChat. */
+    public boolean isSmsUsable() {
+        return smsEnabled && isUsable();
     }
 
     /** URL d'un chemin de l'API, barre oblique finale de {@link #baseUrl} tolérée. */

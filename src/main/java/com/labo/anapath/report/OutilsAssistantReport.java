@@ -41,8 +41,9 @@ public class OutilsAssistantReport {
     @Bean
     OutilAssistant compteRenduEtat(ReportService comptesRendus) {
         return OutilAssistant.lecture("compte_rendu_etat", "Compte rendu consulté",
-                "L'état du compte rendu d'une demande : en rédaction, en attente de validation, validé ; qui l'a "
-                        + "validé et quand ; remis ou non, et quand. Ne donne pas le texte du compte rendu.",
+                "L'état du compte rendu d'une demande — statut DRAFT = pas terminé (en cours, en "
+                        + "attente, pas encore validé ; « En attente » à l'écran), VALIDATED = terminé et validé, DELIVERED = remis ; qui l'a validé et quand ; remis ou non, et "
+                        + "quand. Ne donne pas le texte du compte rendu.",
                 SCHEMA, "view-reports", ArgsCompteRendu.class, (ctx, a) -> {
                     ReportDetailDto r = comptesRendus.findDetailByTestOrderCode(a.codeDemande().strip(), ctx.branchId());
                     Map<String, Object> d = new LinkedHashMap<>();
