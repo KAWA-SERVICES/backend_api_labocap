@@ -112,6 +112,15 @@ public class ReportController {
                         isUrgent, status, isLate, discipline, rappel)));
     }
 
+    @GetMapping("/{id}/appels")
+    @PreAuthorize("hasAuthority('view-reports')")
+    public ResponseEntity<ApiResponse<List<AppelResponseDto>>> getAppelsHistorique(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        return ResponseEntity.ok(ApiResponse.success(
+                reportService.getAppelsHistorique(principal.getBranchId(), id)));
+    }
+
     @GetMapping("/logs")
     @PreAuthorize("hasAuthority('view-reports')")
     public ResponseEntity<ApiResponse<PageResponse<LogReportResponseDto>>> getReportLogs(

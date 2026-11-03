@@ -46,6 +46,27 @@ class ReglagesDeRappelTest {
     }
 
     @Test
+    @DisplayName("intervalleRelanceMinutes / tentativesMax : défauts si absents, valeur saisie sinon")
+    void intervalleEtTentatives() {
+        parametres(Map.of());
+        assertThat(reglages.intervalleRelanceMinutes()).isEqualTo(20);
+        assertThat(reglages.tentativesMax()).isEqualTo(3);
+
+        parametres(Map.of("rappel_intervalle_minutes", "45", "rappel_tentatives_max", "5"));
+        assertThat(reglages.intervalleRelanceMinutes()).isEqualTo(45);
+        assertThat(reglages.tentativesMax()).isEqualTo(5);
+    }
+
+    @Test
+    @DisplayName("intervalleRelanceMinutes / tentativesMax : valeur illisible retombe sur le défaut")
+    void intervalleEtTentativesIllisibles() {
+        parametres(Map.of("rappel_intervalle_minutes", "vingt", "rappel_tentatives_max", "trois"));
+
+        assertThat(reglages.intervalleRelanceMinutes()).isEqualTo(20);
+        assertThat(reglages.tentativesMax()).isEqualTo(3);
+    }
+
+    @Test
     @DisplayName("manquants : FluidChat non configuré en tête, puis chaque lien vide ; rien quand tout est prêt")
     void manquants() {
         parametres(Map.of("fluidchat_audio_fr", "https://caap.bj/fr.mp3"));

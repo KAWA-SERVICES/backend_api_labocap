@@ -17,6 +17,9 @@ public interface AppelByReportRepository extends JpaRepository<AppelByReport, UU
     /** Le dernier appel d'un compte rendu : un compte rendu peut être rappelé plusieurs fois. */
     Optional<AppelByReport> findFirstByReportIdOrderByCreatedAtDesc(UUID reportId);
 
+    /** Historique complet des appels d'un compte rendu, du plus ancien au plus récent — pour audit. */
+    List<AppelByReport> findByReportIdOrderByCreatedAtAsc(UUID reportId);
+
     /** Appels encore en file ou en cours chez FluidChat, à relire par la tâche de suivi. */
     List<AppelByReport> findByIssueAndCreatedAtAfterOrderByCreatedAtAsc(
             IssueRappel issue, LocalDateTime depuis, Pageable pageable);
@@ -43,6 +46,28 @@ public interface AppelByReportRepository extends JpaRepository<AppelByReport, UU
     List<Object[]> compterParIssue(@Param("branchId") UUID branchId,
                                    @Param("debut") LocalDateTime debut,
                                    @Param("fin") LocalDateTime fin);
+
+    /**
+     * Derniers appels sans réponse, assez anciens pour être relancés, et pas
+     * encore au plafond de tentatives (en comptant l'appel initial).
+     */
+    @Query(value = """
+            SELECT a.* FROM appel_by_reports a
+            WHERE a.issue IN ('SANS_REPONSE', 'INJOIGNABLE')
+              AND a.deleted_at IS NULL
+              AND a.finished_at IS NOT NULL
+              AND a.finished_at <= :avant
+              AND NOT EXISTS (SELECT 1 FROM appel_by_reports n
+                              WHERE n.report_id = a.report_id AND n.issue IS NOT NULL
+                                AND n.deleted_at IS NULL AND n.created_at > a.created_at)
+              AND (SELECT COUNT(*) FROM appel_by_reports c
+                   WHERE c.report_id = a.report_id AND c.deleted_at IS NULL) < :tentativesMax
+            ORDER BY a.finished_at ASC
+            LIMIT :limite
+            """, nativeQuery = true)
+    List<AppelByReport> findARelancer(@Param("avant") LocalDateTime avant,
+                                       @Param("tentativesMax") int tentativesMax,
+                                       @Param("limite") int limite);
 
     /**
      * Patients à rappeler par le secrétariat : dernier appel non abouti, patient

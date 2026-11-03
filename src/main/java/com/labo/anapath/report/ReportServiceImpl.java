@@ -65,6 +65,8 @@ public class ReportServiceImpl implements ReportService {
     /** Pour relire les étiquettes, rangées en tableau JSON sur la ligne d'affectation. */
     private final tools.jackson.databind.ObjectMapper objectMapper;
     private final ReportVersionRepository reportVersionRepository;
+    private final AppelByReportRepository appelByReportRepository;
+    private final ReglagesDeRappel reglagesDeRappel;
 
     // Les findById restants (utilisateurs, titres, modèles) visent des
     // référentiels globaux, pas des dossiers.
@@ -416,13 +418,14 @@ public class ReportServiceImpl implements ReportService {
             String dateBegin, String dateEnd,
             Boolean isUrgent, Integer statusFilter, Boolean isLate,
             Discipline discipline, String rappel) {
-        if (rappel != null && !rappel.isBlank() && !"A_RAPPELER".equals(rappel)) {
+        if (rappel != null && !rappel.isBlank() && !"A_RAPPELER".equals(rappel) && !"CAS_ANORMAL".equals(rappel)) {
             try {
                 IssueRappel.valueOf(rappel);
             } catch (IllegalArgumentException e) {
                 throw new InvalidOperationException("Filtre de rappel inconnu : " + rappel);
             }
         }
+        int seuil = reglagesDeRappel.tentativesMax();
         var pageRequest = PageRequest.of(page, size);
         var resultPage = reportRepository.findSuiviRows(
                 branchId,
@@ -434,6 +437,7 @@ public class ReportServiceImpl implements ReportService {
                 Boolean.TRUE.equals(isLate) ? Boolean.TRUE : null,
                 (rappel != null && !rappel.isBlank()) ? rappel : null,
                 disciplineOuDefaut(discipline).name(),
+                seuil,
                 pageRequest);
 
         return PageResponse.of(resultPage.map(p -> new ReportSuiviRowDto(
@@ -457,8 +461,24 @@ public class ReportServiceImpl implements ReportService {
                 p.getRappelIssue() != null ? IssueRappel.valueOf(p.getRappelIssue()) : null,
                 p.getRappelTentatives(),
                 p.getRappelPctEcoute(),
-                p.getRappelDate()
+                p.getRappelDate(),
+                p.getRappelAppelsTotal() != null ? p.getRappelAppelsTotal() : 0,
+                p.getRappelAppelsTotal() != null && p.getRappelAppelsTotal() > seuil
         )));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<AppelResponseDto> getAppelsHistorique(UUID branchId, UUID reportId) {
+        Report report = reportRepository.findById(reportId)
+                .orElseThrow(() -> new ResourceNotFoundException("Compte rendu", reportId));
+        if (!branchId.equals(report.getBranchId())) {
+            throw new ResourceNotFoundException("Compte rendu", reportId);
+        }
+        return appelByReportRepository.findByReportIdOrderByCreatedAtAsc(reportId).stream()
+                .map(a -> new AppelResponseDto(a.getId(), reportId, a.getAppelId(), a.getCreatedAt(),
+                        a.getIssue(), a.getResult(), a.getListenedPct(), a.getAttempts()))
+                .toList();
     }
 
     @Override

@@ -30,5 +30,9 @@ public record ReportSuiviRowDto(
         IssueRappel rappelIssue,
         Integer rappelTentatives,
         Integer rappelPctEcoute,
-        LocalDateTime rappelDate
+        LocalDateTime rappelDate,
+        /** Total des appels reçus, tous statuts confondus (indépendant du dernier appel ci-dessus). */
+        int rappelAppelsTotal,
+        /** Vrai si {@code rappelAppelsTotal} dépasse {@code rappel_tentatives_max} — cas à auditer. */
+        boolean rappelAnormal
 ) {}
