@@ -104,6 +104,20 @@ public class FluidChatClient {
             @JsonProperty("call_seconds") long callSeconds,
             @JsonProperty("call_fcfa") long callFcfa) {}
 
+    /**
+     * Ligne du registre du crédit ; {@code kind} : topup, plan, sms, call, refund,
+     * manual ; {@code units} : parts, secondes ou mois selon le type.
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record Mouvement(
+            long id,
+            String kind,
+            @JsonProperty("amount_fcfa") long amountFcfa,
+            int units,
+            String note,
+            @JsonProperty("balance_after") long balanceAfter,
+            @JsonProperty("created_at") String createdAt) {}
+
     /** Recharge Mobile Money du crédit ; {@code status} : pending, paid, failed. */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Recharge(
@@ -207,6 +221,16 @@ public class FluidChatClient {
     /** Relit une recharge ; FluidChat réinterroge Bulkpay si elle est encore en attente. */
     public Recharge recharge(long id) {
         return echanger(HttpMethod.GET, "/v1/api/wallet/topups/" + id, null, Recharge.class);
+    }
+
+    /**
+     * Registre du crédit pour un mois, du plus récent au plus ancien.
+     *
+     * @param mois {@code AAAA-MM}, déjà validé par l'appelant ; nul = mois en cours
+     */
+    public List<Mouvement> mouvements(String mois) {
+        String chemin = "/v1/api/wallet/entries" + (mois == null ? "" : "?month=" + mois);
+        return List.of(echanger(HttpMethod.GET, chemin, null, Mouvement[].class));
     }
 
     /**

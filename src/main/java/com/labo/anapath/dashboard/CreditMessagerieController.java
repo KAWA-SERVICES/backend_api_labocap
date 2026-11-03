@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -54,6 +55,10 @@ public class CreditMessagerieController {
 
     public record Recharge(long id, long montantFcfa, int mois, String reseau, String statut,
                            String motifEchec, String creeLe, String payeLe) {}
+
+    /** Ligne du registre ; {@code type} : topup, plan, sms, call, refund, manual. */
+    public record Mouvement(long id, String type, long montantFcfa, int unites, String note,
+                            long soldeApres, String le) {}
 
     /** {@code plan} : none (non activé), unit (à l'unité) ou unlimited (forfait). */
     public record Credit(String plan, Long soldeFcfa, String illimiteJusquAu, boolean bas,
@@ -100,6 +105,23 @@ public class CreditMessagerieController {
         log.info("Recharge du crédit SMS et appels {} lancée par {} : {} F, {} mois, {}",
                 recharge.id(), principal.getId(), recharge.montantFcfa(), recharge.mois(), recharge.reseau());
         return ResponseEntity.ok(ApiResponse.success(recharge));
+    }
+
+    /**
+     * Historique du crédit pour un mois ({@code AAAA-MM}, mois en cours par
+     * défaut) : de quoi comprendre chaque franc débité ou crédité.
+     */
+    @GetMapping("/mouvements")
+    public ResponseEntity<ApiResponse<List<Mouvement>>> mouvements(
+            @RequestParam(required = false) String mois) {
+        // Validé ici : le mois part dans l'URL de FluidChat.
+        if (mois != null && !mois.matches("\\d{4}-(0[1-9]|1[0-2])")) {
+            throw new InvalidOperationException("Mois au format AAAA-MM.");
+        }
+        return ResponseEntity.ok(ApiResponse.success(fluidChat.mouvements(mois).stream()
+                .map(m -> new Mouvement(m.id(), m.kind(), m.amountFcfa(), m.units(),
+                        m.note() == null ? "" : m.note(), m.balanceAfter(), m.createdAt()))
+                .toList()));
     }
 
     @GetMapping("/recharges/{id}")
