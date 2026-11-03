@@ -93,7 +93,7 @@ class NotificationServiceImplTest {
         CallResponseDto result = service.callPatient(REPORT_ID, USER_ID);
 
         verify(reglagesDeRappel).audio("fon");
-        verify(fluidChatClient).lancer(eq("+22997000001"), eq("custom/2"),
+        verify(fluidChatClient).lancer(eq("+2290197000001"), eq("custom/2"),
                 eq(ReglagesDeRappel.Plage.REGLEMENTAIRE.versCallWindow()), eq("26-4099"));
         assertThat(result.appelId()).isEqualTo("57");
     }
@@ -155,7 +155,7 @@ class NotificationServiceImplTest {
 
         NotifyResponseDto result = service.notifyPatient(REPORT_ID, USER_ID);
 
-        verify(smsSender).envoyer(eq("22997000001"), any(), eq(SmsSender.SOURCE_RESULTAT), any());
+        verify(smsSender).envoyer(eq("2290197000001"), any(), eq(SmsSender.SOURCE_RESULTAT), any());
         verify(fluidChatClient).lancer(any(), any(), any(), any());
         assertThat(result.channel()).isEqualTo("CALL");
         assertThat(result.message()).isEqualTo("SMS envoyé et appel programmé");
@@ -191,7 +191,7 @@ class NotificationServiceImplTest {
 
         service.notifyPatient(REPORT_ID, USER_ID);
 
-        verify(fluidChatClient).lancer(eq("+22966000002"), any(), any(), any());
+        verify(fluidChatClient).lancer(eq("+2290166000002"), any(), any(), any());
     }
 
     @Test

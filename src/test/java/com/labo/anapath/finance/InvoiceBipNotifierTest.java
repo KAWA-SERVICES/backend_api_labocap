@@ -78,7 +78,7 @@ class InvoiceBipNotifierTest {
 
         valider();
 
-        verify(fluidChatClient).bip(eq("+22997000001"), eq("custom/9"),
+        verify(fluidChatClient).bip(eq("+2290197000001"), eq("custom/9"),
                 eq(PLAGE.versCallWindow()), eq("BIP-FA260001"));
         verify(invoiceBipRepository).marquerBip(eq(INVOICE_ID), any());
     }
@@ -90,7 +90,7 @@ class InvoiceBipNotifierTest {
 
         valider();
 
-        verify(fluidChatClient).bip(eq("+22966000002"), any(), any(), any());
+        verify(fluidChatClient).bip(eq("+2290166000002"), any(), any(), any());
     }
 
     @Test
