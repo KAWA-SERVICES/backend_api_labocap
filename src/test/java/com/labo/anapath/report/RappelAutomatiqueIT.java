@@ -7,6 +7,7 @@ import com.labo.anapath.patient.PatientRepository;
 import com.labo.anapath.testorder.TestOrder;
 import com.labo.anapath.testorder.TestOrderRepository;
 import com.labo.anapath.testorder.TestOrderStatus;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,6 +22,8 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -59,6 +62,25 @@ class RappelAutomatiqueIT {
 
     private static final UUID AGENCE = UUID.fromString("00000000-0000-0000-0000-000000000001");
 
+    /**
+     * Les jobs testés ici balaient toutes les lignes dues, sans filtrer sur le
+     * compte-rendu du test : sans nettoyage, le compte-rendu d'un test précédent
+     * (même conteneur Postgres, pas de rollback) se fait rappeler une seconde
+     * fois par le test suivant.
+     */
+    @AfterEach
+    void nettoyerLesDonnees() {
+        jdbc.update("DELETE FROM appel_by_reports");
+        jdbc.update("DELETE FROM log_reports");
+        jdbc.update("DELETE FROM reports");
+        jdbc.update("DELETE FROM test_orders");
+        jdbc.update("DELETE FROM patients");
+    }
+
+    /** Plage toujours ouverte : ces tests ne portent pas sur la fenêtre horaire (déjà couverte par RattrapageAvisPatientJobTest), qui ferait échouer les relances hors 8h–18h en semaine. */
+    private static final ReglagesDeRappel.Plage TOUJOURS_OUVERT =
+            new ReglagesDeRappel.Plage(LocalTime.MIN, LocalTime.MAX, Set.of(0, 1, 2, 3, 4, 5, 6));
+
     @MockitoBean private FluidChatClient fluidChatClient;
     @MockitoBean private SmsSender smsSender;
     @MockitoBean private ReglagesDeRappel reglagesDeRappel;
@@ -75,7 +97,7 @@ class RappelAutomatiqueIT {
     void unSeulAppelParPatient() {
         when(reglagesDeRappel.delaiHeures()).thenReturn(24);
         when(reglagesDeRappel.audio(any())).thenReturn("custom/16");
-        when(reglagesDeRappel.plage()).thenReturn(ReglagesDeRappel.Plage.REGLEMENTAIRE);
+        when(reglagesDeRappel.plage()).thenReturn(TOUJOURS_OUVERT);
         when(fluidChatClient.lancer(anyString(), anyString(), any(), anyString()))
                 .thenReturn(new FluidChatClient.Appel(89, "queued", null, null, 0));
         Report report = compteRenduValideIlYA30h();
@@ -97,7 +119,7 @@ class RappelAutomatiqueIT {
     void appelJointReluUneFois() {
         when(reglagesDeRappel.delaiHeures()).thenReturn(24);
         when(reglagesDeRappel.audio(any())).thenReturn("custom/16");
-        when(reglagesDeRappel.plage()).thenReturn(ReglagesDeRappel.Plage.REGLEMENTAIRE);
+        when(reglagesDeRappel.plage()).thenReturn(TOUJOURS_OUVERT);
         when(fluidChatClient.lancer(anyString(), anyString(), any(), anyString()))
                 .thenReturn(new FluidChatClient.Appel(302, "queued", null, null, 0));
         when(fluidChatClient.lire(302L))
@@ -117,7 +139,7 @@ class RappelAutomatiqueIT {
     @Test
     @DisplayName("relance : un patient sans réponse n'est pas rerappelé avant l'intervalle de relance")
     void pasDeRelanceAvantLIntervalle() {
-        when(reglagesDeRappel.plage()).thenReturn(ReglagesDeRappel.Plage.REGLEMENTAIRE);
+        when(reglagesDeRappel.plage()).thenReturn(TOUJOURS_OUVERT);
         when(reglagesDeRappel.intervalleRelanceMinutes()).thenReturn(20);
         when(reglagesDeRappel.tentativesMax()).thenReturn(3);
         Report report = compteRenduValideIlYA30h("26-9001");
@@ -132,7 +154,7 @@ class RappelAutomatiqueIT {
     @DisplayName("relance : un patient sans réponse est rerappelé passé l'intervalle, nouvelle ligne d'historique")
     void relanceApresLIntervalle() {
         when(reglagesDeRappel.audio(any())).thenReturn("custom/16");
-        when(reglagesDeRappel.plage()).thenReturn(ReglagesDeRappel.Plage.REGLEMENTAIRE);
+        when(reglagesDeRappel.plage()).thenReturn(TOUJOURS_OUVERT);
         when(reglagesDeRappel.intervalleRelanceMinutes()).thenReturn(20);
         when(reglagesDeRappel.tentativesMax()).thenReturn(3);
         when(fluidChatClient.lancer(anyString(), anyString(), any(), anyString()))
@@ -151,7 +173,7 @@ class RappelAutomatiqueIT {
     @Test
     @DisplayName("relance : plus aucune relance automatique au plafond de tentatives")
     void aucuneRelanceAuPlafond() {
-        when(reglagesDeRappel.plage()).thenReturn(ReglagesDeRappel.Plage.REGLEMENTAIRE);
+        when(reglagesDeRappel.plage()).thenReturn(TOUJOURS_OUVERT);
         when(reglagesDeRappel.intervalleRelanceMinutes()).thenReturn(20);
         when(reglagesDeRappel.tentativesMax()).thenReturn(2);
         Report report = compteRenduValideIlYA30h("26-9003");
