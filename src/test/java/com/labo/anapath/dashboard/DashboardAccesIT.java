@@ -134,4 +134,14 @@ class DashboardAccesIT {
             assertThat(statut(ADMIN, route)).as(route).isEqualTo(HttpStatus.OK);
         }
     }
+
+    @Test
+    @DisplayName("crédit SMS et appels : view-dashboard ne suffit pas, l'admin passe le contrôle d'accès")
+    void creditMessagerie_exigeManageMessagingCredit() {
+        assertThat(statut(SANS_FINANCE, "/credit-messagerie")).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(statut(SANS_FINANCE, "/credit-messagerie/recharges")).isEqualTo(HttpStatus.FORBIDDEN);
+        // FluidChat n'est pas configuré en test : l'admin franchit le garde et
+        // reçoit 503 « non configuré », pas 403.
+        assertThat(statut(ADMIN, "/credit-messagerie")).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+    }
 }

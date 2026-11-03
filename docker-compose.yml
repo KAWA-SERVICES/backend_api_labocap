@@ -217,6 +217,7 @@ services:
       # Sans adresse ni clé, aucun appel ne part ; le SMS part quand même.
       FLUIDCHAT_BASE_URL: ${FLUIDCHAT_BASE_URL:-}
       FLUIDCHAT_API_KEY: ${FLUIDCHAT_API_KEY:-}
+      FLUIDCHAT_SMS_ENABLED: ${FLUIDCHAT_SMS_ENABLED:-false}
       ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY:-}
       ELEVENLABS_BASE_URL: ${ELEVENLABS_BASE_URL:-https://api.elevenlabs.io}
       ELEVENLABS_MODEL_ID: ${ELEVENLABS_MODEL_ID:-scribe_v2_medical}

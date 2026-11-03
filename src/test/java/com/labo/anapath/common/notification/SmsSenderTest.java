@@ -25,10 +25,12 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class SmsSenderTest {
 
+    @Mock private FluidChatClient fluidChatClient;
     @Mock private FluidPaySmsClient fluidPaySmsClient;
     @Mock private OurVoiceClient ourVoiceClient;
     @Mock private SettingAppRepository settingAppRepository;
 
+    private FluidChatProperties fluidChat;
     private FluidPaySmsProperties properties;
     private SmsSender sender;
 
@@ -38,7 +40,9 @@ class SmsSenderTest {
     @BeforeEach
     void setup() {
         properties = new FluidPaySmsProperties();
-        sender = new SmsSender(properties, fluidPaySmsClient, ourVoiceClient, settingAppRepository);
+        fluidChat = new FluidChatProperties();
+        sender = new SmsSender(fluidChat, fluidChatClient, properties, fluidPaySmsClient,
+                ourVoiceClient, settingAppRepository);
     }
 
     private void fluidPayConfigure() {
@@ -174,6 +178,58 @@ class SmsSenderTest {
     void numeroAbsent_exception() {
         assertThatThrownBy(() -> sender.envoyer(null, "texte", SmsSender.SOURCE_FACTURE, SOURCE_ID))
                 .isInstanceOf(ExternalApiException.class);
+        verify(fluidPaySmsClient, never()).envoyer(any());
+    }
+
+    private void fluidChatConfigure(boolean sms) {
+        fluidChat.setBaseUrl("https://caap.chat-app.fluidpay.link");
+        fluidChat.setApiKey("fc_live_test");
+        fluidChat.setSmsEnabled(sms);
+    }
+
+    @Test
+    @DisplayName("interrupteur allumé : le SMS part par FluidChat, avec une référence stable, pas par FluidPay")
+    void fluidChat_quandAllume() {
+        fluidChatConfigure(true);
+        properties.setApiKey("fluidpay-token");
+        properties.setEncryptionKey("0123456789abcdef0123456789abcdef");
+        when(fluidChatClient.envoyerSms(anyString(), anyString(), anyString()))
+                .thenReturn(new FluidChatClient.SmsEnvoye(7, "r", 1, 24, "accepted", 976L));
+
+        sender.envoyer(NUMERO, "Votre résultat est prêt", SmsSender.SOURCE_RESULTAT, SOURCE_ID);
+
+        ArgumentCaptor<String> reference = ArgumentCaptor.forClass(String.class);
+        verify(fluidChatClient).envoyerSms(org.mockito.ArgumentMatchers.eq(NUMERO),
+                org.mockito.ArgumentMatchers.eq("Votre résultat est prêt"), reference.capture());
+        assertThat(reference.getValue())
+                .isEqualTo("labocap_report-" + SOURCE_ID.toString().replace("-", ""));
+        verify(fluidPaySmsClient, never()).envoyer(any());
+    }
+
+    @Test
+    @DisplayName("interrupteur éteint : FluidChat configuré pour les appels ne prend pas les SMS")
+    void fluidChat_eteint_resteSurFluidPay() {
+        fluidChatConfigure(false);
+        fluidPayConfigure();
+
+        sender.envoyer(NUMERO, "texte", SmsSender.SOURCE_FACTURE, SOURCE_ID);
+
+        verify(fluidPaySmsClient).envoyer(any());
+        verify(fluidChatClient, never()).envoyerSms(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("crédit épuisé chez FluidChat : l'erreur remonte, sans repli sur FluidPay")
+    void fluidChat_creditEpuise_pasDeRepli() {
+        fluidChatConfigure(true);
+        properties.setApiKey("fluidpay-token");
+        properties.setEncryptionKey("0123456789abcdef0123456789abcdef");
+        when(fluidChatClient.envoyerSms(anyString(), anyString(), anyString()))
+                .thenThrow(new ExternalApiException("Crédit SMS et appels épuisé : rechargez-le depuis le tableau de bord."));
+
+        assertThatThrownBy(() -> sender.envoyer(NUMERO, "texte", SmsSender.SOURCE_FACTURE, SOURCE_ID))
+                .isInstanceOf(ExternalApiException.class)
+                .hasMessageContaining("Crédit SMS");
         verify(fluidPaySmsClient, never()).envoyer(any());
     }
 }
