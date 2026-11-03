@@ -160,4 +160,33 @@ class FluidChatClientTest {
         assertThat(p.month().callFcfa()).isEqualTo(225);
         assertThat(p.pendingTopup().status()).isEqualTo("pending");
     }
+
+    @Test
+    @DisplayName("historique : GET /v1/api/wallet/entries avec le mois, lignes du registre lues")
+    void mouvements() {
+        serveur.expect(requestTo(BASE + "/v1/api/wallet/entries?month=2026-11"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess("""
+                        [{"id":41,"kind":"sms","amount_fcfa":-24,"units":1,"note":"","balance_after":7579,
+                          "created_at":"2026-11-03T08:12:03Z"},
+                         {"id":40,"kind":"manual","amount_fcfa":-2397,"units":0,"note":"Rattrapage","balance_after":7603,
+                          "created_at":"2026-11-03T05:50:00Z"}]""", MediaType.APPLICATION_JSON));
+
+        java.util.List<FluidChatClient.Mouvement> m = client.mouvements("2026-11");
+
+        assertThat(m).hasSize(2);
+        assertThat(m.get(0).amountFcfa()).isEqualTo(-24);
+        assertThat(m.get(1).balanceAfter()).isEqualTo(7603);
+        serveur.verify();
+    }
+
+    @Test
+    @DisplayName("historique sans mois : le mois en cours, sans paramètre")
+    void mouvements_moisCourant() {
+        serveur.expect(requestTo(BASE + "/v1/api/wallet/entries"))
+                .andRespond(withSuccess("[]", MediaType.APPLICATION_JSON));
+
+        assertThat(client.mouvements(null)).isEmpty();
+        serveur.verify();
+    }
 }

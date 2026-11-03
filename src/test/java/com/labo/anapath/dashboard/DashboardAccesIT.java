@@ -140,6 +140,9 @@ class DashboardAccesIT {
     void creditMessagerie_exigeManageMessagingCredit() {
         assertThat(statut(SANS_FINANCE, "/credit-messagerie")).isEqualTo(HttpStatus.FORBIDDEN);
         assertThat(statut(SANS_FINANCE, "/credit-messagerie/recharges")).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(statut(SANS_FINANCE, "/credit-messagerie/mouvements")).isEqualTo(HttpStatus.FORBIDDEN);
+        // Le mois est validé avant tout appel à FluidChat.
+        assertThat(statut(ADMIN, "/credit-messagerie/mouvements?mois=2026-13")).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
         // FluidChat n'est pas configuré en test : l'admin franchit le garde et
         // reçoit 503 « non configuré », pas 403.
         assertThat(statut(ADMIN, "/credit-messagerie")).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
