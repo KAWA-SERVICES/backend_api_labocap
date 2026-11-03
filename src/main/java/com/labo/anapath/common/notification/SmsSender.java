@@ -93,7 +93,9 @@ public class SmsSender {
         if (fluidChatProperties.isSmsUsable()) {
             FluidChatClient.SmsEnvoye envoi = fluidChatClient.envoyerSms(
                     numero, texte, referenceId(sourceType, sourceId));
-            if (!"accepted".equals(envoi.status())) {
+            // « pending » : renvoi d'une référence dont le premier envoi est en
+            // cours — le SMS part déjà, ce n'est pas un échec.
+            if ("failed".equals(envoi.status())) {
                 throw new ExternalApiException("SMS refusé par la passerelle.");
             }
             log.info("SMS {} envoyé via FluidChat — id={}, parts={}, coût={} F",
