@@ -266,6 +266,9 @@ app:
     base-url: ${FLUIDCHAT_BASE_URL:}
     # Jamais en dur : la clé fait sonner des téléphones aux frais du laboratoire.
     api-key: ${FLUIDCHAT_API_KEY:}
+    # SMS par FluidChat (crédit prépayé) au lieu de FluidPay ; n'allumer qu'une
+    # fois la version de fluidchat-saas avec /v1/api/sms déployée.
+    sms-enabled: ${FLUIDCHAT_SMS_ENABLED:false}
   fluidinvoice:
     # Passerelle de facturation normalisée e-MCF / DGI (invoice.fluidpay.link).
     # Désactivée par défaut : sans clé, aucune facture ne doit partir à la DGI.

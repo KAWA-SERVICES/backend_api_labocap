@@ -24,6 +24,12 @@ import java.util.UUID;
  * L'appel vocal, lui, ne passe pas par FluidPay, dont l'API ne fait que du SMS :
  * il part par FluidChat, voir {@link FluidChatClient}.</p>
  *
+ * <p><b>Par FluidChat, quand l'interrupteur est allumé</b>
+ * ({@link FluidChatProperties#isSmsUsable()}) : les SMS sont alors débités du
+ * crédit prépayé SMS et appels du laboratoire, que le tableau de bord affiche et
+ * recharge. Un crédit épuisé remonte tel quel ; il ne bascule pas sur FluidPay,
+ * qui contournerait le prépayé.</p>
+ *
  * <p><b>Le repli, et sa raison.</b> Tant que la clé FluidPay n'est pas
  * renseignée, les SMS repartent par l'API OurVoice directe, comme avant. Sans
  * ce repli, mettre en service cette bascule sans la clé couperait du jour au
@@ -54,6 +60,8 @@ public class SmsSender {
     /** Clé {@code setting_apps} de l'adresse SMS d'OurVoice, utilisée par le repli. */
     private static final String CLE_ENDPOINT_OURVOICE = "link_ourvoice_sms";
 
+    private final FluidChatProperties fluidChatProperties;
+    private final FluidChatClient fluidChatClient;
     private final FluidPaySmsProperties properties;
     private final FluidPaySmsClient fluidPaySmsClient;
     private final OurVoiceClient ourVoiceClient;
@@ -81,6 +89,19 @@ public class SmsSender {
             throw new ExternalApiException("SMS non envoyé : aucun numéro de destinataire.");
         }
         String texte = tronquer(message);
+
+        if (fluidChatProperties.isSmsUsable()) {
+            FluidChatClient.SmsEnvoye envoi = fluidChatClient.envoyerSms(
+                    numero, texte, referenceId(sourceType, sourceId));
+            // « pending » : renvoi d'une référence dont le premier envoi est en
+            // cours — le SMS part déjà, ce n'est pas un échec.
+            if ("failed".equals(envoi.status())) {
+                throw new ExternalApiException("SMS refusé par la passerelle.");
+            }
+            log.info("SMS {} envoyé via FluidChat — id={}, parts={}, coût={} F",
+                    sourceType, envoi.id(), envoi.parts(), envoi.costFcfa());
+            return;
+        }
 
         if (properties.isUsable()) {
             FluidPaySmsResult resultat = fluidPaySmsClient.envoyer(new FluidPaySmsMessage(
