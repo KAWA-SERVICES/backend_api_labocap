@@ -62,6 +62,7 @@ class RappelsIT {
         // Les tâches planifiées n'ont rien à faire pendant le test.
         registry.add("app.report.notify-retry.cron", () -> "-");
         registry.add("app.report.call-follow.cron", () -> "-");
+        registry.add("app.report.call-retry.cron", () -> "-");
     }
 
     private static final UUID AGENCE = UUID.fromString("00000000-0000-0000-0000-000000000001");

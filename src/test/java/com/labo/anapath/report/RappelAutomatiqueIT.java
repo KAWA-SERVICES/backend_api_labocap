@@ -54,6 +54,7 @@ class RappelAutomatiqueIT {
         // La tâche est appelée à la main : pas de passage planifié pendant le test.
         registry.add("app.report.notify-retry.cron", () -> "-");
         registry.add("app.report.call-follow.cron", () -> "-");
+        registry.add("app.report.call-retry.cron", () -> "-");
     }
 
     private static final UUID AGENCE = UUID.fromString("00000000-0000-0000-0000-000000000001");
@@ -111,6 +112,64 @@ class RappelAutomatiqueIT {
         assertThat(appelRepository.findFirstByReportIdOrderByCreatedAtDesc(report.getId()))
                 .hasValueSatisfying(a -> assertThat(a.getIssue()).isEqualTo(IssueRappel.JOINT));
         assertThat(reportRepository.findById(report.getId()).orElseThrow().isCalled()).isTrue();
+    }
+
+    @Test
+    @DisplayName("relance : un patient sans réponse n'est pas rerappelé avant l'intervalle de relance")
+    void pasDeRelanceAvantLIntervalle() {
+        when(reglagesDeRappel.plage()).thenReturn(ReglagesDeRappel.Plage.REGLEMENTAIRE);
+        when(reglagesDeRappel.intervalleRelanceMinutes()).thenReturn(20);
+        when(reglagesDeRappel.tentativesMax()).thenReturn(3);
+        Report report = compteRenduValideIlYA30h("26-9001");
+        appelTermine(report, IssueRappel.SANS_REPONSE, LocalDateTime.now().minusMinutes(5));
+
+        job.relancerLesAppelsSansReponse();
+
+        verify(fluidChatClient, times(0)).lancer(anyString(), anyString(), any(), anyString());
+    }
+
+    @Test
+    @DisplayName("relance : un patient sans réponse est rerappelé passé l'intervalle, nouvelle ligne d'historique")
+    void relanceApresLIntervalle() {
+        when(reglagesDeRappel.audio(any())).thenReturn("custom/16");
+        when(reglagesDeRappel.plage()).thenReturn(ReglagesDeRappel.Plage.REGLEMENTAIRE);
+        when(reglagesDeRappel.intervalleRelanceMinutes()).thenReturn(20);
+        when(reglagesDeRappel.tentativesMax()).thenReturn(3);
+        when(fluidChatClient.lancer(anyString(), anyString(), any(), anyString()))
+                .thenReturn(new FluidChatClient.Appel(90, "queued", null, null, 0));
+        Report report = compteRenduValideIlYA30h("26-9002");
+        appelTermine(report, IssueRappel.SANS_REPONSE, LocalDateTime.now().minusMinutes(25));
+
+        job.relancerLesAppelsSansReponse();
+
+        verify(fluidChatClient, times(1)).lancer(anyString(), anyString(), any(), anyString());
+        assertThat(appelRepository.findAll().stream()
+                .filter(a -> report.getId().equals(a.getReport().getId())))
+                .hasSize(2);
+    }
+
+    @Test
+    @DisplayName("relance : plus aucune relance automatique au plafond de tentatives")
+    void aucuneRelanceAuPlafond() {
+        when(reglagesDeRappel.plage()).thenReturn(ReglagesDeRappel.Plage.REGLEMENTAIRE);
+        when(reglagesDeRappel.intervalleRelanceMinutes()).thenReturn(20);
+        when(reglagesDeRappel.tentativesMax()).thenReturn(2);
+        Report report = compteRenduValideIlYA30h("26-9003");
+        appelTermine(report, IssueRappel.SANS_REPONSE, LocalDateTime.now().minusMinutes(60));
+        appelTermine(report, IssueRappel.SANS_REPONSE, LocalDateTime.now().minusMinutes(25));
+
+        job.relancerLesAppelsSansReponse();
+
+        verify(fluidChatClient, times(0)).lancer(anyString(), anyString(), any(), anyString());
+    }
+
+    private AppelByReport appelTermine(Report report, IssueRappel issue, LocalDateTime finishedAt) {
+        AppelByReport appel = new AppelByReport();
+        appel.setBranchId(report.getBranchId());
+        appel.setReport(report);
+        appel.setIssue(issue);
+        appel.setFinishedAt(finishedAt);
+        return appelRepository.save(appel);
     }
 
     private Report compteRenduValideIlYA30h() {

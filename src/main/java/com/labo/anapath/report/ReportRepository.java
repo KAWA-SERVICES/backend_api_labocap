@@ -281,7 +281,8 @@ public interface ReportRepository extends JpaRepository<Report, UUID> {
                 ap.issue as rappelIssue,
                 ap.attempts as rappelTentatives,
                 ap.listened_pct as rappelPctEcoute,
-                ap.created_at as rappelDate
+                ap.created_at as rappelDate,
+                COALESCE(nb.total, 0) as rappelAppelsTotal
             FROM reports r
             JOIN test_orders t ON r.test_order_id = t.id
             JOIN patients p ON t.patient_id = p.id
@@ -293,6 +294,11 @@ public interface ReportRepository extends JpaRepository<Report, UUID> {
                 ORDER BY a.created_at DESC
                 LIMIT 1
             ) ap ON true
+            LEFT JOIN LATERAL (
+                SELECT COUNT(*) AS total
+                FROM appel_by_reports a3
+                WHERE a3.report_id = r.id AND a3.deleted_at IS NULL
+            ) nb ON true
             LEFT JOIN LATERAL (
                 SELECT a2.user_id, a2.created_at
                 FROM test_order_assignment_details d2
@@ -332,6 +338,7 @@ public interface ReportRepository extends JpaRepository<Report, UUID> {
                        AND ap.issue IN ('PARTIEL', 'SANS_REPONSE', 'INJOIGNABLE', 'SANS_NUMERO')
                        AND COALESCE(r.is_called, false) = false
                        AND COALESCE(r.is_delivered, false) = false)
+                   OR (:rappel = 'CAS_ANORMAL' AND COALESCE(nb.total, 0) > :seuil)
                    OR ap.issue = :rappel)
               AND r.discipline = :discipline
             ORDER BY r.created_at DESC
@@ -348,6 +355,11 @@ public interface ReportRepository extends JpaRepository<Report, UUID> {
                 ORDER BY a.created_at DESC
                 LIMIT 1
             ) ap ON true
+            LEFT JOIN LATERAL (
+                SELECT COUNT(*) AS total
+                FROM appel_by_reports a3
+                WHERE a3.report_id = r.id AND a3.deleted_at IS NULL
+            ) nb ON true
             WHERE r.branch_id = :branchId
               AND r.deleted_at IS NULL
               AND (:search IS NULL OR :search = ''
@@ -378,6 +390,7 @@ public interface ReportRepository extends JpaRepository<Report, UUID> {
                        AND ap.issue IN ('PARTIEL', 'SANS_REPONSE', 'INJOIGNABLE', 'SANS_NUMERO')
                        AND COALESCE(r.is_called, false) = false
                        AND COALESCE(r.is_delivered, false) = false)
+                   OR (:rappel = 'CAS_ANORMAL' AND COALESCE(nb.total, 0) > :seuil)
                    OR ap.issue = :rappel)
               AND r.discipline = :discipline
             """,
@@ -393,6 +406,7 @@ public interface ReportRepository extends JpaRepository<Report, UUID> {
             @Param("isLate") Boolean isLate,
             @Param("rappel") String rappel,
             @Param("discipline") String discipline,
+            @Param("seuil") Integer seuil,
             Pageable pageable);
 
     @Query(value = """

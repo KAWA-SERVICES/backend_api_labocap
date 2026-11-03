@@ -28,4 +28,6 @@ public interface ReportSuiviProjection {
     Integer getRappelTentatives();
     Integer getRappelPctEcoute();
     LocalDateTime getRappelDate();
+    /** Nombre total d'appels de rappel reçus par ce compte rendu, tous statuts confondus. */
+    Integer getRappelAppelsTotal();
 }
