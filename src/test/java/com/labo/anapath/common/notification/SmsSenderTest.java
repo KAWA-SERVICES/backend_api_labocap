@@ -225,10 +225,11 @@ class SmsSenderTest {
         properties.setApiKey("fluidpay-token");
         properties.setEncryptionKey("0123456789abcdef0123456789abcdef");
         when(fluidChatClient.envoyerSms(anyString(), anyString(), anyString()))
-                .thenThrow(new ExternalApiException("Crédit SMS et appels épuisé : rechargez-le depuis le tableau de bord."));
+                .thenThrow(new com.labo.anapath.common.exception.InvalidOperationException(
+                        "Crédit SMS et appels épuisé : rechargez-le depuis le tableau de bord."));
 
         assertThatThrownBy(() -> sender.envoyer(NUMERO, "texte", SmsSender.SOURCE_FACTURE, SOURCE_ID))
-                .isInstanceOf(ExternalApiException.class)
+                .isInstanceOf(com.labo.anapath.common.exception.InvalidOperationException.class)
                 .hasMessageContaining("Crédit SMS");
         verify(fluidPaySmsClient, never()).envoyer(any());
     }

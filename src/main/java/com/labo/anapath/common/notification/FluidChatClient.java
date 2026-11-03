@@ -3,6 +3,7 @@ package com.labo.anapath.common.notification;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.labo.anapath.common.exception.ExternalApiException;
+import com.labo.anapath.common.exception.InvalidOperationException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpEntity;
@@ -242,7 +243,13 @@ public class FluidChatClient {
             return reponse;
         } catch (RestClientResponseException e) {
             log.warn("FluidChat {} {} : {}", methode, chemin, e.getStatusCode());
-            throw new ExternalApiException(messageDErreur(e), e);
+            Erreur.Detail detail = detail(e);
+            String message = messageDErreur(e, detail);
+            // Un refus qui demande une action de l'utilisateur (recharger, attendre,
+            // corriger la saisie) n'est pas une panne : 422 et non 503.
+            throw refusMetier(e, detail)
+                    ? new InvalidOperationException(message)
+                    : new ExternalApiException(message, e);
         } catch (RestClientException e) {
             // Le détail (adresse, corps de réponse) reste au journal : ce message
             // remonte tel quel au client.
@@ -259,8 +266,7 @@ public class FluidChatClient {
      * français pour ses propres clients. Tout le reste reste générique : le corps
      * peut contenir des détails internes.</p>
      */
-    private String messageDErreur(RestClientResponseException e) {
-        Erreur.Detail detail = detail(e);
+    private static String messageDErreur(RestClientResponseException e, Erreur.Detail detail) {
         String code = detail == null ? "" : String.valueOf(detail.code());
         if (e.getStatusCode().value() == HttpStatus.PAYMENT_REQUIRED.value()) {
             return "CREDIT".equals(code)
@@ -276,6 +282,15 @@ public class FluidChatClient {
             return "Demande refusée : " + detail.message();
         }
         return "Service d'appel indisponible";
+    }
+
+    private static boolean refusMetier(RestClientResponseException e, Erreur.Detail detail) {
+        int statut = e.getStatusCode().value();
+        return statut == HttpStatus.BAD_REQUEST.value()
+                || statut == HttpStatus.CONFLICT.value()
+                || statut == HttpStatus.UNPROCESSABLE_CONTENT.value()
+                || (statut == HttpStatus.PAYMENT_REQUIRED.value()
+                        && detail != null && "CREDIT".equals(detail.code()));
     }
 
     private static Erreur.Detail detail(RestClientResponseException e) {

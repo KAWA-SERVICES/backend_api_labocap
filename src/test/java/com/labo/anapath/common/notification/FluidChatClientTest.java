@@ -1,6 +1,7 @@
 package com.labo.anapath.common.notification;
 
 import com.labo.anapath.common.exception.ExternalApiException;
+import com.labo.anapath.common.exception.InvalidOperationException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -101,14 +102,14 @@ class FluidChatClientTest {
     }
 
     @Test
-    @DisplayName("402 CREDIT : message qui dit de recharger depuis le tableau de bord")
+    @DisplayName("402 CREDIT : refus métier (422 côté labsys), message qui dit de recharger depuis le tableau de bord")
     void creditEpuise() {
         serveur.expect(requestTo(BASE + "/v1/api/sms"))
                 .andRespond(withStatus(HttpStatus.PAYMENT_REQUIRED).contentType(MediaType.APPLICATION_JSON)
                         .body("{\"error\":{\"code\":\"CREDIT\",\"message\":\"crédit insuffisant\"}}"));
 
         assertThatThrownBy(() -> client.envoyerSms("2290197000001", "t", "ref-000000000000"))
-                .isInstanceOf(ExternalApiException.class)
+                .isInstanceOf(InvalidOperationException.class)
                 .hasMessage("Crédit SMS et appels épuisé : rechargez-le depuis le tableau de bord.");
     }
 
@@ -120,6 +121,7 @@ class FluidChatClientTest {
                         .body("{\"error\":{\"code\":\"SUBSCRIPTION\",\"message\":\"abonnement suspendu\"}}"));
 
         assertThatThrownBy(() -> client.lancer("+2290197000001", "custom/2", PLAGE, "26-1"))
+                .isInstanceOf(ExternalApiException.class)
                 .hasMessageContaining("Abonnement FluidChat suspendu");
     }
 
@@ -134,6 +136,7 @@ class FluidChatClientTest {
                         .body("{\"error\":{\"code\":\"INVALID\",\"message\":\"montant entre 1 000 et 2 000 000 F\"}}"));
 
         assertThatThrownBy(() -> client.recharger(500L, null, "MTN", "2290197000001"))
+                .isInstanceOf(InvalidOperationException.class)
                 .hasMessage("Demande refusée : montant entre 1 000 et 2 000 000 F");
     }
 
