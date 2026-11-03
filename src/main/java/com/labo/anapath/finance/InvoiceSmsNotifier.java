@@ -123,7 +123,7 @@ public class InvoiceSmsNotifier {
      * rattrapage.</p>
      */
     private String envoyer(Invoice invoice) {
-        String destinataire = PhoneNumbers.toInternationalA10Chiffres(telephoneDuClient(invoice));
+        String destinataire = PhoneNumbers.toInternational(telephoneDuClient(invoice));
         if (destinataire == null) {
             throw new InvalidOperationException(
                     "Aucun numéro de téléphone pour ce patient : renseignez-le sur sa fiche.");
