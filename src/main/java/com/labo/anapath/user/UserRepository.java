@@ -158,6 +158,14 @@ public interface UserRepository extends JpaRepository<User, UUID> {
             """)
     List<User> findMetiersDuSoin();
 
+    /** Destinataires de l'alerte de crédit SMS et appels bas : secrétariat et super-admins actifs. */
+    @Query("""
+            SELECT DISTINCT u FROM User u JOIN u.roles r
+            WHERE r.slug IN ('secretariat', 'super-admin')
+              AND u.deletedAt IS NULL AND u.isActive = true
+            """)
+    List<User> findAlertesCredit();
+
     /** Secrets TOTP sans la marque de chiffrement (lot 11, rattrapage au démarrage). */
     @org.springframework.data.jpa.repository.Query(value = """
             SELECT id, two_factor_secret FROM users

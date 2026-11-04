@@ -14,7 +14,6 @@ import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -36,18 +35,19 @@ import java.util.List;
  * ici divergerait au premier envoi.</p>
  *
  * <p><b>Pas de cloisonnement par agence.</b> Le crédit est celui du laboratoire
- * entier (une clé FluidChat par installation) ; c'est pourquoi la route exige un
- * droit d'administration, {@code manage-messaging-credit}, et non un simple accès
- * au tableau de bord.</p>
+ * entier (une clé FluidChat par installation). <b>Ouvert à tout utilisateur
+ * connecté</b> : chacun doit voir un crédit bas, et une recharge se valide sur le
+ * téléphone du payeur. Le « bas » est celui de LabSys ({@link AutonomieDuCredit}),
+ * pas le seuil fixe de FluidChat.</p>
  */
 @RestController
 @RequestMapping("/api/v1/dashboard/credit-messagerie")
 @RequiredArgsConstructor
 @Slf4j
-@PreAuthorize("hasAuthority('view-dashboard') and hasAuthority('manage-messaging-credit')")
 public class CreditMessagerieController {
 
     private final FluidChatClient fluidChat;
+    private final AutonomieDuCredit autonomie;
 
     public record Prix(long smsPartFcfa, long appelSecondeFcfa, long forfaitMoisFcfa) {}
 
@@ -60,9 +60,14 @@ public class CreditMessagerieController {
     public record Mouvement(long id, String type, long montantFcfa, int unites, String note,
                             long soldeApres, String le) {}
 
-    /** {@code plan} : none (non activé), unit (à l'unité) ou unlimited (forfait). */
+    /**
+     * {@code plan} : none (non activé), unit (à l'unité) ou unlimited (forfait).
+     * {@code bas} : moins de trois jours d'autonomie ; {@code autonomieJours} nul
+     * sans consommation récente.
+     */
     public record Credit(String plan, Long soldeFcfa, String illimiteJusquAu, boolean bas,
-                         long seuilBasFcfa, Prix prix, Mois mois, Recharge rechargeEnCours) {}
+                         long seuilBasFcfa, Prix prix, Mois mois, Recharge rechargeEnCours,
+                         boolean epuise, Long autonomieJours) {}
 
     /** Offre à l'unité : {@code montantFcfa} ; forfait : {@code mois}. Jamais les deux. */
     public record DemandeDeRecharge(
@@ -76,11 +81,14 @@ public class CreditMessagerieController {
         FluidChatClient.Portefeuille p = fluidChat.portefeuille();
         FluidChatClient.Tarifs t = p.prices();
         FluidChatClient.Mois m = p.month();
+        AutonomieDuCredit.Etat etat = autonomie.etat(p);
         return ResponseEntity.ok(ApiResponse.success(new Credit(
-                p.plan(), p.balanceFcfa(), p.unlimitedUntil(), p.low(), p.lowThresholdFcfa(),
+                p.plan(), p.balanceFcfa(), p.unlimitedUntil(),
+                etat.niveau() != AutonomieDuCredit.Niveau.OK, etat.seuilBasFcfa(),
                 t == null ? null : new Prix(t.smsPartFcfa(), t.callSecondFcfa(), t.unlimitedMonthFcfa()),
                 m == null ? null : new Mois(m.sms(), m.smsParts(), m.smsFcfa(), m.callSeconds(), m.callFcfa()),
-                recharge(p.pendingTopup()))));
+                recharge(p.pendingTopup()),
+                etat.niveau() == AutonomieDuCredit.Niveau.EPUISE, etat.autonomieJours())));
     }
 
     @GetMapping("/recharges")
