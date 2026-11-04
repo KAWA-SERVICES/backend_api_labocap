@@ -98,14 +98,14 @@ class RappelAutomatiqueIT {
         when(reglagesDeRappel.delaiHeures()).thenReturn(24);
         when(reglagesDeRappel.audio(any())).thenReturn("custom/16");
         when(reglagesDeRappel.plage()).thenReturn(TOUJOURS_OUVERT);
-        when(fluidChatClient.lancer(anyString(), anyString(), any(), anyString()))
+        when(fluidChatClient.lancer(anyString(), anyString(), any(), anyString(), any()))
                 .thenReturn(new FluidChatClient.Appel(89, "queued", null, null, 0));
         Report report = compteRenduValideIlYA30h();
 
         job.rattraperAvisEnAttente();
         job.rattraperAvisEnAttente();
 
-        verify(fluidChatClient, times(1)).lancer(anyString(), anyString(), any(), anyString());
+        verify(fluidChatClient, times(1)).lancer(anyString(), anyString(), any(), anyString(), any());
         assertThat(reportRepository.findById(report.getId()).orElseThrow().getPatientNotifiedAt()).isNotNull();
         assertThat(appelRepository.findFirstByReportIdOrderByCreatedAtDesc(report.getId()))
                 .hasValueSatisfying(a -> assertThat(a.getAppelId()).isEqualTo("89"));
@@ -120,7 +120,7 @@ class RappelAutomatiqueIT {
         when(reglagesDeRappel.delaiHeures()).thenReturn(24);
         when(reglagesDeRappel.audio(any())).thenReturn("custom/16");
         when(reglagesDeRappel.plage()).thenReturn(TOUJOURS_OUVERT);
-        when(fluidChatClient.lancer(anyString(), anyString(), any(), anyString()))
+        when(fluidChatClient.lancer(anyString(), anyString(), any(), anyString(), any()))
                 .thenReturn(new FluidChatClient.Appel(302, "queued", null, null, 0));
         when(fluidChatClient.lire(302L))
                 .thenReturn(new FluidChatClient.Appel(302, "answered", "completed", 100, 1));
@@ -147,7 +147,7 @@ class RappelAutomatiqueIT {
 
         job.relancerLesAppelsSansReponse();
 
-        verify(fluidChatClient, times(0)).lancer(anyString(), anyString(), any(), anyString());
+        verify(fluidChatClient, times(0)).lancer(anyString(), anyString(), any(), anyString(), any());
     }
 
     @Test
@@ -157,14 +157,14 @@ class RappelAutomatiqueIT {
         when(reglagesDeRappel.plage()).thenReturn(TOUJOURS_OUVERT);
         when(reglagesDeRappel.intervalleRelanceMinutes()).thenReturn(20);
         when(reglagesDeRappel.tentativesMax()).thenReturn(3);
-        when(fluidChatClient.lancer(anyString(), anyString(), any(), anyString()))
+        when(fluidChatClient.lancer(anyString(), anyString(), any(), anyString(), any()))
                 .thenReturn(new FluidChatClient.Appel(90, "queued", null, null, 0));
         Report report = compteRenduValideIlYA30h("26-9002");
         appelTermine(report, IssueRappel.SANS_REPONSE, LocalDateTime.now().minusMinutes(25));
 
         job.relancerLesAppelsSansReponse();
 
-        verify(fluidChatClient, times(1)).lancer(anyString(), anyString(), any(), anyString());
+        verify(fluidChatClient, times(1)).lancer(anyString(), anyString(), any(), anyString(), any());
         assertThat(appelRepository.findAll().stream()
                 .filter(a -> report.getId().equals(a.getReport().getId())))
                 .hasSize(2);
@@ -182,7 +182,33 @@ class RappelAutomatiqueIT {
 
         job.relancerLesAppelsSansReponse();
 
-        verify(fluidChatClient, times(0)).lancer(anyString(), anyString(), any(), anyString());
+        verify(fluidChatClient, times(0)).lancer(anyString(), anyString(), any(), anyString(), any());
+    }
+
+    @Test
+    @DisplayName("relance FluidChat : un ancien appel sans réponse, relancé et écouté, passe à JOINT ; plus aucune relance ensuite")
+    void appelRelanceParFluidChat() {
+        when(reglagesDeRappel.plage()).thenReturn(TOUJOURS_OUVERT);
+        when(reglagesDeRappel.intervalleRelanceMinutes()).thenReturn(20);
+        when(reglagesDeRappel.tentativesMax()).thenReturn(3);
+        Report report = compteRenduValideIlYA30h("26-9004");
+        AppelByReport ancien = appelTermine(report, IssueRappel.SANS_REPONSE, LocalDateTime.now().minusMinutes(90));
+        ancien.setAppelId("401");
+        appelRepository.save(ancien);
+        // Relance de LabSys, plus récente, elle aussi sans réponse.
+        appelTermine(report, IssueRappel.SANS_REPONSE, LocalDateTime.now().minusMinutes(30));
+        when(fluidChatClient.lire(401L))
+                .thenReturn(new FluidChatClient.Appel(401, "answered", "completed", 100, 2));
+
+        job.suivreLesAppels();
+        job.relancerLesAppelsSansReponse();
+        job.suivreLesAppels();
+
+        assertThat(appelRepository.findById(ancien.getId()).orElseThrow().getIssue()).isEqualTo(IssueRappel.JOINT);
+        assertThat(reportRepository.findById(report.getId()).orElseThrow().isCalled()).isTrue();
+        // Prévenu : ni nouvel appel, ni relecture supplémentaire.
+        verify(fluidChatClient, times(0)).lancer(anyString(), anyString(), any(), anyString(), any());
+        verify(fluidChatClient, times(1)).lire(401L);
     }
 
     private AppelByReport appelTermine(Report report, IssueRappel issue, LocalDateTime finishedAt) {

@@ -63,7 +63,7 @@ class SmsSenderTest {
     }
 
     private FluidPaySmsMessage envoyerEtCapturer(String message) {
-        sender.envoyer(NUMERO, message, SmsSender.SOURCE_FACTURE, SOURCE_ID);
+        sender.envoyer(NUMERO, message, SmsSender.SOURCE_FACTURE, SOURCE_ID, null);
         ArgumentCaptor<FluidPaySmsMessage> capteur =
                 ArgumentCaptor.forClass(FluidPaySmsMessage.class);
         verify(fluidPaySmsClient).envoyer(capteur.capture());
@@ -131,7 +131,7 @@ class SmsSenderTest {
         // couperait des avis qui fonctionnaient jusque-là.
         ourVoiceConfigure();
 
-        sender.envoyer(NUMERO, "texte", SmsSender.SOURCE_RESULTAT, SOURCE_ID);
+        sender.envoyer(NUMERO, "texte", SmsSender.SOURCE_RESULTAT, SOURCE_ID, null);
 
         verify(ourVoiceClient).sms("https://api.getourvoice.com/v1/messages",
                 "token-ourvoice", NUMERO, "texte");
@@ -146,7 +146,7 @@ class SmsSenderTest {
         properties.setEnabled(false);
         ourVoiceConfigure();
 
-        sender.envoyer(NUMERO, "texte", SmsSender.SOURCE_RESULTAT, SOURCE_ID);
+        sender.envoyer(NUMERO, "texte", SmsSender.SOURCE_RESULTAT, SOURCE_ID, null);
 
         verify(ourVoiceClient).sms(anyString(), anyString(), anyString(), anyString());
     }
@@ -154,7 +154,7 @@ class SmsSenderTest {
     @Test
     @DisplayName("aucun transport configuré → exception nommant les deux réglages")
     void aucunTransport_exceptionExplicite() {
-        assertThatThrownBy(() -> sender.envoyer(NUMERO, "texte", SmsSender.SOURCE_FACTURE, SOURCE_ID))
+        assertThatThrownBy(() -> sender.envoyer(NUMERO, "texte", SmsSender.SOURCE_FACTURE, SOURCE_ID, null))
                 .isInstanceOf(ExternalApiException.class)
                 .hasMessageContaining("app.fluidpay.sms.api-key")
                 .hasMessageContaining("link_ourvoice_sms");
@@ -168,7 +168,7 @@ class SmsSenderTest {
         when(fluidPaySmsClient.envoyer(any()))
                 .thenThrow(new ExternalApiException("Envoi SMS refusé par FluidPay : numéro invalide"));
 
-        assertThatThrownBy(() -> sender.envoyer(NUMERO, "texte", SmsSender.SOURCE_FACTURE, SOURCE_ID))
+        assertThatThrownBy(() -> sender.envoyer(NUMERO, "texte", SmsSender.SOURCE_FACTURE, SOURCE_ID, null))
                 .isInstanceOf(ExternalApiException.class);
         verify(ourVoiceClient, never()).sms(any(), any(), any(), any());
     }
@@ -176,7 +176,7 @@ class SmsSenderTest {
     @Test
     @DisplayName("numéro absent → exception, aucun appel à la passerelle")
     void numeroAbsent_exception() {
-        assertThatThrownBy(() -> sender.envoyer(null, "texte", SmsSender.SOURCE_FACTURE, SOURCE_ID))
+        assertThatThrownBy(() -> sender.envoyer(null, "texte", SmsSender.SOURCE_FACTURE, SOURCE_ID, null))
                 .isInstanceOf(ExternalApiException.class);
         verify(fluidPaySmsClient, never()).envoyer(any());
     }
@@ -193,14 +193,15 @@ class SmsSenderTest {
         fluidChatConfigure(true);
         properties.setApiKey("fluidpay-token");
         properties.setEncryptionKey("0123456789abcdef0123456789abcdef");
-        when(fluidChatClient.envoyerSms(anyString(), anyString(), anyString()))
+        when(fluidChatClient.envoyerSms(anyString(), anyString(), anyString(), any()))
                 .thenReturn(new FluidChatClient.SmsEnvoye(7, "r", 1, 24, "accepted", 976L));
 
-        sender.envoyer(NUMERO, "Votre résultat est prêt", SmsSender.SOURCE_RESULTAT, SOURCE_ID);
+        sender.envoyer(NUMERO, "Votre résultat est prêt", SmsSender.SOURCE_RESULTAT, SOURCE_ID, "26-0042");
 
         ArgumentCaptor<String> reference = ArgumentCaptor.forClass(String.class);
         verify(fluidChatClient).envoyerSms(org.mockito.ArgumentMatchers.eq(NUMERO),
-                org.mockito.ArgumentMatchers.eq("Votre résultat est prêt"), reference.capture());
+                org.mockito.ArgumentMatchers.eq("Votre résultat est prêt"), reference.capture(),
+                org.mockito.ArgumentMatchers.eq("26-0042"));
         assertThat(reference.getValue())
                 .isEqualTo("labocap_report-" + SOURCE_ID.toString().replace("-", ""));
         verify(fluidPaySmsClient, never()).envoyer(any());
@@ -212,10 +213,10 @@ class SmsSenderTest {
         fluidChatConfigure(false);
         fluidPayConfigure();
 
-        sender.envoyer(NUMERO, "texte", SmsSender.SOURCE_FACTURE, SOURCE_ID);
+        sender.envoyer(NUMERO, "texte", SmsSender.SOURCE_FACTURE, SOURCE_ID, null);
 
         verify(fluidPaySmsClient).envoyer(any());
-        verify(fluidChatClient, never()).envoyerSms(anyString(), anyString(), anyString());
+        verify(fluidChatClient, never()).envoyerSms(anyString(), anyString(), anyString(), any());
     }
 
     @Test
@@ -224,11 +225,11 @@ class SmsSenderTest {
         fluidChatConfigure(true);
         properties.setApiKey("fluidpay-token");
         properties.setEncryptionKey("0123456789abcdef0123456789abcdef");
-        when(fluidChatClient.envoyerSms(anyString(), anyString(), anyString()))
+        when(fluidChatClient.envoyerSms(anyString(), anyString(), anyString(), any()))
                 .thenThrow(new com.labo.anapath.common.exception.InvalidOperationException(
                         "Crédit SMS et appels épuisé : rechargez-le depuis le tableau de bord."));
 
-        assertThatThrownBy(() -> sender.envoyer(NUMERO, "texte", SmsSender.SOURCE_FACTURE, SOURCE_ID))
+        assertThatThrownBy(() -> sender.envoyer(NUMERO, "texte", SmsSender.SOURCE_FACTURE, SOURCE_ID, null))
                 .isInstanceOf(com.labo.anapath.common.exception.InvalidOperationException.class)
                 .hasMessageContaining("Crédit SMS");
         verify(fluidPaySmsClient, never()).envoyer(any());

@@ -125,6 +125,20 @@ class RattrapageAvisPatientJobTest {
     }
 
     @Test
+    @DisplayName("suivi : les appels finis sans joindre le patient sont relus aussi, FluidChat peut les relancer")
+    void suivi_relitLesAppelsRelancables() {
+        AppelByReport sansReponse = new AppelByReport();
+        when(appelByReportRepository.findRelancablesNonPrevenus(
+                eq(RattrapageAvisPatientJob.RELANCABLES), any(), any())).thenReturn(List.of(sansReponse));
+
+        job.suivreLesAppels();
+
+        verify(notificationService).actualiser(sansReponse);
+        assertThat(RattrapageAvisPatientJob.RELANCABLES)
+                .containsExactlyInAnyOrder(IssueRappel.SANS_REPONSE, IssueRappel.INJOIGNABLE, IssueRappel.PARTIEL);
+    }
+
+    @Test
     @DisplayName("Plage : lundi–vendredi 8h–18h, heure de Porto-Novo, bornes comprises")
     void plageReglementaire() {
         ReglagesDeRappel.Plage plage = ReglagesDeRappel.Plage.REGLEMENTAIRE;

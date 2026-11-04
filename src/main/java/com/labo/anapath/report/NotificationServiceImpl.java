@@ -66,9 +66,9 @@ public class NotificationServiceImpl implements NotificationService {
                     "Aucun numéro de téléphone pour ce patient : renseignez-le sur sa fiche.");
         }
         // Un appel déjà en file ou en cours : un second clic ne doit pas faire
-        // sonner le patient deux fois (ni payer deux appels).
-        if (appelByReportRepository.findFirstByReportIdOrderByCreatedAtDesc(reportId)
-                .map(dernier -> dernier.getIssue() == IssueRappel.EN_COURS).orElse(false)) {
+        // sonner le patient deux fois (ni payer deux appels). Tous les appels du
+        // compte rendu comptent : FluidChat peut relancer un ancien.
+        if (appelByReportRepository.existsByReportIdAndIssue(reportId, IssueRappel.EN_COURS)) {
             throw new InvalidOperationException("Un appel est déjà programmé pour ce patient.");
         }
         String audio = reglagesDeRappel.audio(patient.getLangue());
@@ -78,7 +78,8 @@ public class NotificationServiceImpl implements NotificationService {
         }
 
         FluidChatClient.Appel lance = fluidChatClient.lancer("+" + to, audio,
-                reglagesDeRappel.plage().versCallWindow(), report.getTestOrder().getCode());
+                reglagesDeRappel.plage().versCallWindow(), report.getTestOrder().getCode(),
+                report.getTestOrder().getCode());
         String appelId = String.valueOf(lance.id());
 
         report.getTestOrder().setStatusAppel(appelId);
@@ -121,12 +122,17 @@ public class NotificationServiceImpl implements NotificationService {
     }
 
     static void appliquer(AppelByReport appel, FluidChatClient.Appel lu) {
+        IssueRappel avant = appel.getIssue();
         appel.setStatus(lu.status());
         appel.setResult(lu.result());
         appel.setListenedPct(lu.listenedPct());
         appel.setAttempts(lu.attempts());
         appel.setIssue(IssueRappel.de(lu.status(), lu.result(), lu.listenedPct()));
-        if (appel.getIssue() != IssueRappel.EN_COURS && appel.getFinishedAt() == null) {
+        // Un appel relancé par FluidChat repart en cours, ou change d'issue entre
+        // deux relectures : la fin qui compte est la dernière.
+        if (appel.getIssue() == IssueRappel.EN_COURS) {
+            appel.setFinishedAt(null);
+        } else if (appel.getFinishedAt() == null || appel.getIssue() != avant) {
             appel.setFinishedAt(LocalDateTime.now());
         }
     }
@@ -157,7 +163,8 @@ public class NotificationServiceImpl implements NotificationService {
         String texte = report.getDiscipline() == Discipline.BIOLOGY
                 ? smsTemplates.smsResultatBiologie(report.getBranchId())
                 : smsTemplates.smsResultat(report.getBranchId());
-        smsSender.envoyer(to, texte, SmsSender.SOURCE_RESULTAT, UUID.randomUUID());
+        smsSender.envoyer(to, texte, SmsSender.SOURCE_RESULTAT, UUID.randomUUID(),
+                report.getTestOrder().getCode());
 
         // L'avis est parti : la tâche de rappel n'a plus à s'en occuper.
         report.setPatientNotifiedAt(LocalDateTime.now());

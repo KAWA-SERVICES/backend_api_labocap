@@ -8,7 +8,9 @@ import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -42,6 +44,9 @@ public class RattrapageAvisPatientJob {
 
     /** Au-delà, un appel encore « en cours » n'est plus relu : FluidChat a fini depuis longtemps. */
     private static final int SUIVI_JOURS = 7;
+
+    /** Issues finies qu'une relance de FluidChat peut encore changer. */
+    static final Set<IssueRappel> RELANCABLES = Set.of(IssueRappel.SANS_REPONSE, IssueRappel.INJOIGNABLE, IssueRappel.PARTIEL);
 
     private final ReportRepository reportRepository;
     private final NotificationService notificationService;
@@ -106,9 +111,16 @@ public class RattrapageAvisPatientJob {
      */
     @Scheduled(cron = "${app.report.call-follow.cron:0 */10 * * * *}", zone = "Africa/Porto-Novo")
     public void suivreLesAppels() {
-        List<AppelByReport> enCours = appelByReportRepository.findByIssueAndCreatedAtAfterOrderByCreatedAtAsc(
-                IssueRappel.EN_COURS, LocalDateTime.now().minusDays(SUIVI_JOURS), PageRequest.of(0, LOT_MAX));
-        for (AppelByReport appel : enCours) {
+        LocalDateTime depuis = LocalDateTime.now().minusDays(SUIVI_JOURS);
+        List<AppelByReport> aRelire = new ArrayList<>(appelByReportRepository
+                .findByIssueAndCreatedAtAfterOrderByCreatedAtAsc(IssueRappel.EN_COURS, depuis, PageRequest.of(0, LOT_MAX)));
+        // FluidChat relance un appel sans réponse quand le patient rappelle ou
+        // qu'un agent clique « Relancer » : même id, nouvelle issue. Sans cette
+        // relecture, un patient enfin joint resterait « à rappeler ».
+        // ponytail: jusqu'à 2 × LOT_MAX lectures par passage ; espacer celles-ci si FluidChat s'en plaint.
+        aRelire.addAll(appelByReportRepository.findRelancablesNonPrevenus(
+                RELANCABLES, depuis, PageRequest.of(0, LOT_MAX)));
+        for (AppelByReport appel : aRelire) {
             try {
                 notificationService.actualiser(appel);
             } catch (RuntimeException e) {

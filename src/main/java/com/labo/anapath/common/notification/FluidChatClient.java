@@ -49,6 +49,8 @@ public class FluidChatClient {
     static final List<String> RELANCER_SUR = List.of("no_answer", "busy", "unreachable");
     /** Un bip qui a sonné sans décroché a atteint son but : seul un bip qui n'est pas passé est relancé. */
     static final List<String> RELANCER_BIP_SUR = List.of("busy", "unreachable");
+    /** Longueur maximale du nom d'un contact chez FluidChat. */
+    static final int NOM_MAX = 120;
 
     private final RestTemplate restTemplate;
     private final FluidChatProperties properties;
@@ -141,16 +143,18 @@ public class FluidChatClient {
      *
      * @param plage     {@code call_window} : hors de cette plage, l'appel et ses relances attendent
      * @param reference renvoyée telle quelle, visible dans « Voix › Historique » de FluidChat
+     * @param nom       voir {@link #nommer}
      */
-    public Appel lancer(String to, String audio, Map<String, Object> plage, String reference) {
-        Map<String, Object> corps = Map.of(
+    public Appel lancer(String to, String audio, Map<String, Object> plage, String reference, String nom) {
+        Map<String, Object> corps = new HashMap<>(Map.of(
                 "to", to,
                 "audio", audioFluidChat(audio),
                 "max_attempts", MAX_TENTATIVES,
                 "retry_on", RELANCER_SUR,
                 "retry_delay_minutes", DELAI_RELANCE_MINUTES,
                 "call_window", plage,
-                "reference", reference == null ? "" : reference);
+                "reference", reference == null ? "" : reference));
+        nommer(corps, nom);
         return echanger(HttpMethod.POST, "/v1/api/calls", corps);
     }
 
@@ -159,8 +163,9 @@ public class FluidChatClient {
      * voit un appel manqué et peut enregistrer le numéro avant l'appel du résultat.
      *
      * @param audio joué seulement si le patient décroche ; nul : FluidChat raccroche aussitôt
+     * @param nom   voir {@link #nommer}
      */
-    public Appel bip(String to, String audio, Map<String, Object> plage, String reference) {
+    public Appel bip(String to, String audio, Map<String, Object> plage, String reference, String nom) {
         Map<String, Object> corps = new HashMap<>(Map.of(
                 "to", to,
                 "bip", true,
@@ -172,6 +177,7 @@ public class FluidChatClient {
         if (audio != null) {
             corps.put("audio", audioFluidChat(audio));
         }
+        nommer(corps, nom);
         return echanger(HttpMethod.POST, "/v1/api/calls", corps);
     }
 
@@ -185,10 +191,26 @@ public class FluidChatClient {
      *
      * @param reference clé d'idempotence (64 caractères au plus) : un renvoi avec
      *                  la même référence rend l'envoi existant sans second débit
+     * @param nom       voir {@link #nommer}
      */
-    public SmsEnvoye envoyerSms(String to, String texte, String reference) {
-        return echanger(HttpMethod.POST, "/v1/api/sms",
-                Map.of("to", to, "text", texte, "reference", reference), SmsEnvoye.class);
+    public SmsEnvoye envoyerSms(String to, String texte, String reference, String nom) {
+        Map<String, Object> corps = new HashMap<>(Map.of("to", to, "text", texte, "reference", reference));
+        nommer(corps, nom);
+        return echanger(HttpMethod.POST, "/v1/api/sms", corps, SmsEnvoye.class);
+    }
+
+    /**
+     * Nom du contact que les agents de FluidChat voient au lieu du seul numéro
+     * ({@code name}, §10 de son API) : le numéro de dossier, jamais le nom du
+     * patient, qui ne sort pas de LabSys.
+     *
+     * <p>Omis s'il est vide : un nom vide effacerait celui du contact chez FluidChat.</p>
+     */
+    static void nommer(Map<String, Object> corps, String nom) {
+        if (nom != null && !nom.isBlank()) {
+            String n = nom.strip();
+            corps.put("name", n.length() > NOM_MAX ? n.substring(0, NOM_MAX) : n);
+        }
     }
 
     /** Solde, offre, tarifs et consommation du mois. */

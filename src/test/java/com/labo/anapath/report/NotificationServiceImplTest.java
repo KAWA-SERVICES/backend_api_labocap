@@ -25,6 +25,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
+import java.time.LocalDateTime;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -63,7 +65,7 @@ class NotificationServiceImplTest {
         when(reglagesDeRappel.audio(any())).thenReturn("custom/2");
         when(reglagesDeRappel.plage()).thenReturn(ReglagesDeRappel.Plage.REGLEMENTAIRE);
         when(userRepository.findById(USER_ID)).thenReturn(Optional.empty());
-        when(fluidChatClient.lancer(anyString(), anyString(), any(), any()))
+        when(fluidChatClient.lancer(anyString(), anyString(), any(), any(), any()))
                 .thenReturn(new FluidChatClient.Appel(57, "queued", null, 0, 0));
     }
 
@@ -94,7 +96,7 @@ class NotificationServiceImplTest {
 
         verify(reglagesDeRappel).audio("fon");
         verify(fluidChatClient).lancer(eq("+2290197000001"), eq("custom/2"),
-                eq(ReglagesDeRappel.Plage.REGLEMENTAIRE.versCallWindow()), eq("26-4099"));
+                eq(ReglagesDeRappel.Plage.REGLEMENTAIRE.versCallWindow()), eq("26-4099"), eq("26-4099"));
         assertThat(result.appelId()).isEqualTo("57");
     }
 
@@ -123,21 +125,18 @@ class NotificationServiceImplTest {
 
         assertThatThrownBy(() -> service.callPatient(REPORT_ID, USER_ID))
                 .isInstanceOf(InvalidOperationException.class);
-        verify(fluidChatClient, never()).lancer(any(), any(), any(), any());
+        verify(fluidChatClient, never()).lancer(any(), any(), any(), any(), any());
     }
 
     @Test
     @DisplayName("callPatient : un appel déjà en cours n'est pas doublé par un second clic")
     void callPatient_appelEnCours_refuse() {
         report("97000001", null);
-        AppelByReport enCours = new AppelByReport();
-        enCours.setIssue(IssueRappel.EN_COURS);
-        when(appelByReportRepository.findFirstByReportIdOrderByCreatedAtDesc(REPORT_ID))
-                .thenReturn(Optional.of(enCours));
+        when(appelByReportRepository.existsByReportIdAndIssue(REPORT_ID, IssueRappel.EN_COURS)).thenReturn(true);
 
         assertThatThrownBy(() -> service.callPatient(REPORT_ID, USER_ID))
                 .isInstanceOf(InvalidOperationException.class);
-        verify(fluidChatClient, never()).lancer(any(), any(), any(), any());
+        verify(fluidChatClient, never()).lancer(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -155,8 +154,8 @@ class NotificationServiceImplTest {
 
         NotifyResponseDto result = service.notifyPatient(REPORT_ID, USER_ID);
 
-        verify(smsSender).envoyer(eq("2290197000001"), any(), eq(SmsSender.SOURCE_RESULTAT), any());
-        verify(fluidChatClient).lancer(any(), any(), any(), any());
+        verify(smsSender).envoyer(eq("2290197000001"), any(), eq(SmsSender.SOURCE_RESULTAT), any(), eq("26-4099"));
+        verify(fluidChatClient).lancer(any(), any(), any(), any(), any());
         assertThat(result.channel()).isEqualTo("CALL");
         assertThat(result.message()).isEqualTo("SMS envoyé et appel programmé");
     }
@@ -165,7 +164,7 @@ class NotificationServiceImplTest {
     @DisplayName("notifyPatient : FluidChat en panne, le SMS suffit à prévenir")
     void notifyPatient_appelEnEchec_smsSeul() {
         report("97000001", null);
-        when(fluidChatClient.lancer(any(), any(), any(), any())).thenThrow(new ExternalApiException("panne"));
+        when(fluidChatClient.lancer(any(), any(), any(), any(), any())).thenThrow(new ExternalApiException("panne"));
 
         NotifyResponseDto result = service.notifyPatient(REPORT_ID, USER_ID);
 
@@ -176,8 +175,8 @@ class NotificationServiceImplTest {
     @DisplayName("notifyPatient : ni SMS ni appel, l'erreur remonte pour que la tâche réessaie")
     void notifyPatient_toutEnEchec_leve() {
         Report report = report("97000001", null);
-        when(fluidChatClient.lancer(any(), any(), any(), any())).thenThrow(new ExternalApiException("panne"));
-        doThrow(new ExternalApiException("sms")).when(smsSender).envoyer(any(), any(), any(), any());
+        when(fluidChatClient.lancer(any(), any(), any(), any(), any())).thenThrow(new ExternalApiException("panne"));
+        doThrow(new ExternalApiException("sms")).when(smsSender).envoyer(any(), any(), any(), any(), any());
 
         assertThatThrownBy(() -> service.notifyPatient(REPORT_ID, USER_ID))
                 .isInstanceOf(ExternalApiException.class);
@@ -191,7 +190,7 @@ class NotificationServiceImplTest {
 
         service.notifyPatient(REPORT_ID, USER_ID);
 
-        verify(fluidChatClient).lancer(eq("+2290166000002"), any(), any(), any());
+        verify(fluidChatClient).lancer(eq("+2290166000002"), any(), any(), any(), any());
     }
 
     @Test
@@ -207,8 +206,8 @@ class NotificationServiceImplTest {
         assertThat(ligne.getValue().getIssue()).isEqualTo(IssueRappel.SANS_NUMERO);
         assertThat(ligne.getValue().getAppelId()).isNull();
         assertThat(report.getPatientNotifiedAt()).isNotNull();
-        verify(smsSender, never()).envoyer(any(), any(), any(), any());
-        verify(fluidChatClient, never()).lancer(any(), any(), any(), any());
+        verify(smsSender, never()).envoyer(any(), any(), any(), any(), any());
+        verify(fluidChatClient, never()).lancer(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -254,6 +253,39 @@ class NotificationServiceImplTest {
     }
 
     @Test
+    @DisplayName("appliquer : un appel relancé par FluidChat repart en cours, sans date de fin")
+    void appliquer_appelRelance() {
+        AppelByReport appel = new AppelByReport();
+        appel.setIssue(IssueRappel.SANS_REPONSE);
+        appel.setFinishedAt(LocalDateTime.now().minusDays(1));
+
+        NotificationServiceImpl.appliquer(appel, new FluidChatClient.Appel(57, "calling", "no_answer", null, 2));
+
+        assertThat(appel.getIssue()).isEqualTo(IssueRappel.EN_COURS);
+        assertThat(appel.getFinishedAt()).isNull();
+    }
+
+    @Test
+    @DisplayName("actualiser : un appel sans réponse relancé et écouté passe à JOINT, le patient est prévenu")
+    void actualiser_relanceEcoutee() {
+        Report report = new Report();
+        AppelByReport appel = new AppelByReport();
+        appel.setAppelId("57");
+        appel.setReport(report);
+        appel.setIssue(IssueRappel.SANS_REPONSE);
+        LocalDateTime premiereFin = LocalDateTime.now().minusDays(1);
+        appel.setFinishedAt(premiereFin);
+        when(fluidChatClient.lire(57)).thenReturn(new FluidChatClient.Appel(57, "answered", "completed", 100, 3));
+
+        service.actualiser(appel);
+
+        assertThat(appel.getIssue()).isEqualTo(IssueRappel.JOINT);
+        assertThat(appel.getFinishedAt()).isAfter(premiereFin);
+        assertThat(report.isCalled()).isTrue();
+        verify(reportRepository).save(report);
+    }
+
+    @Test
     @DisplayName("sendSms : clé d'idempotence tirée au sort, pour que la relance passe")
     void sendSms_cleDIdempotenceVariableEntreDeuxEnvois() {
         // Le renvoi manuel d'un avis est un besoin de l'écran de suivi : une clé
@@ -264,7 +296,7 @@ class NotificationServiceImplTest {
         service.sendSms(REPORT_ID, USER_ID);
 
         ArgumentCaptor<UUID> cles = ArgumentCaptor.forClass(UUID.class);
-        verify(smsSender, times(2)).envoyer(any(), any(), eq(SmsSender.SOURCE_RESULTAT), cles.capture());
+        verify(smsSender, times(2)).envoyer(any(), any(), eq(SmsSender.SOURCE_RESULTAT), cles.capture(), any());
         assertThat(cles.getAllValues().get(0)).isNotEqualTo(cles.getAllValues().get(1));
     }
 

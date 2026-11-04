@@ -56,10 +56,11 @@ class FluidChatClientTest {
                 .andRespond(withSuccess("{\"id\":2,\"audio\":\"custom/2\"}", MediaType.APPLICATION_JSON));
         serveur.expect(ExpectedCount.twice(), requestTo(BASE + "/v1/api/calls"))
                 .andExpect(jsonPath("$.audio").value("custom/2"))
+                .andExpect(jsonPath("$.name").value("26-0042"))
                 .andRespond(withSuccess(appel(), MediaType.APPLICATION_JSON));
 
-        client.lancer("+22997000001", LIEN, PLAGE, "26-0001");
-        client.lancer("+22997000002", LIEN, PLAGE, "26-0002");
+        client.lancer("+22997000001", LIEN, PLAGE, "26-0001", "26-0042");
+        client.lancer("+22997000002", LIEN, PLAGE, "26-0002", " 26-0042 ");
 
         serveur.verify();
     }
@@ -71,13 +72,15 @@ class FluidChatClientTest {
                 .andExpect(jsonPath("$.bip").value(true))
                 .andExpect(jsonPath("$.audio").value("custom/9"))
                 .andExpect(jsonPath("$.retry_on.length()").value(2))
+                .andExpect(jsonPath("$.name").value("26-0042"))
                 .andRespond(withSuccess(appel(), MediaType.APPLICATION_JSON));
         serveur.expect(requestTo(BASE + "/v1/api/calls"))
                 .andExpect(jsonPath("$.audio").doesNotExist())
+                .andExpect(jsonPath("$.name").doesNotExist())
                 .andRespond(withSuccess(appel(), MediaType.APPLICATION_JSON));
 
-        client.bip("+22997000001", "custom/9", PLAGE, "BIP-FA260001");
-        client.bip("+22997000001", null, PLAGE, "BIP-FA260001");
+        client.bip("+22997000001", "custom/9", PLAGE, "BIP-FA260001", "26-0042");
+        client.bip("+22997000001", null, PLAGE, "BIP-FA260001", " ");
 
         serveur.verify();
     }
@@ -91,10 +94,12 @@ class FluidChatClientTest {
                 .andExpect(jsonPath("$.to").value("2290197000001"))
                 .andExpect(jsonPath("$.text").value("Votre résultat est prêt"))
                 .andExpect(jsonPath("$.reference").value("labocap_report-abc"))
+                .andExpect(jsonPath("$.name").value("x".repeat(FluidChatClient.NOM_MAX)))
                 .andRespond(withSuccess("{\"id\":12,\"reference\":\"labocap_report-abc\",\"parts\":1,"
                         + "\"cost_fcfa\":24,\"status\":\"accepted\",\"balance_fcfa\":4976}", MediaType.APPLICATION_JSON));
 
-        FluidChatClient.SmsEnvoye envoi = client.envoyerSms("2290197000001", "Votre résultat est prêt", "labocap_report-abc");
+        FluidChatClient.SmsEnvoye envoi = client.envoyerSms("2290197000001", "Votre résultat est prêt", "labocap_report-abc",
+                "x".repeat(FluidChatClient.NOM_MAX + 5));
 
         assertThat(envoi.costFcfa()).isEqualTo(24);
         assertThat(envoi.balanceFcfa()).isEqualTo(4976L);
@@ -108,7 +113,7 @@ class FluidChatClientTest {
                 .andRespond(withStatus(HttpStatus.PAYMENT_REQUIRED).contentType(MediaType.APPLICATION_JSON)
                         .body("{\"error\":{\"code\":\"CREDIT\",\"message\":\"crédit insuffisant\"}}"));
 
-        assertThatThrownBy(() -> client.envoyerSms("2290197000001", "t", "ref-000000000000"))
+        assertThatThrownBy(() -> client.envoyerSms("2290197000001", "t", "ref-000000000000", null))
                 .isInstanceOf(InvalidOperationException.class)
                 .hasMessage("Crédit SMS et appels épuisé : rechargez-le depuis le tableau de bord.");
     }
@@ -120,7 +125,7 @@ class FluidChatClientTest {
                 .andRespond(withStatus(HttpStatus.PAYMENT_REQUIRED).contentType(MediaType.APPLICATION_JSON)
                         .body("{\"error\":{\"code\":\"SUBSCRIPTION\",\"message\":\"abonnement suspendu\"}}"));
 
-        assertThatThrownBy(() -> client.lancer("+2290197000001", "custom/2", PLAGE, "26-1"))
+        assertThatThrownBy(() -> client.lancer("+2290197000001", "custom/2", PLAGE, "26-1", "26-1"))
                 .isInstanceOf(ExternalApiException.class)
                 .hasMessageContaining("Abonnement FluidChat suspendu");
     }

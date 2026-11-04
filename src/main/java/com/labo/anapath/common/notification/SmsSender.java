@@ -81,10 +81,12 @@ public class SmsSender {
      *                   par FluidPay tout second envoi pour la même pièce ; un
      *                   identifiant tiré au sort autorise la relance, ce qu'attend
      *                   le bouton de renvoi manuel d'un avis de résultat.
+     * @param dossier    numéro de dossier montré aux agents de FluidChat ; ignoré
+     *                   par FluidPay et OurVoice, peut être nul
      * @throws ExternalApiException si aucun transport n'est configuré, ou si
      *                              l'envoi est refusé
      */
-    public void envoyer(String numero, String message, String sourceType, UUID sourceId) {
+    public void envoyer(String numero, String message, String sourceType, UUID sourceId, String dossier) {
         if (numero == null || numero.isBlank()) {
             throw new ExternalApiException("SMS non envoyé : aucun numéro de destinataire.");
         }
@@ -92,7 +94,7 @@ public class SmsSender {
 
         if (fluidChatProperties.isSmsUsable()) {
             FluidChatClient.SmsEnvoye envoi = fluidChatClient.envoyerSms(
-                    numero, texte, referenceId(sourceType, sourceId));
+                    numero, texte, referenceId(sourceType, sourceId), dossier);
             // « pending » : renvoi d'une référence dont le premier envoi est en
             // cours — le SMS part déjà, ce n'est pas un échec.
             if ("failed".equals(envoi.status())) {
