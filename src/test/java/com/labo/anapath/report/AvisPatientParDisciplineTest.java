@@ -81,7 +81,7 @@ class AvisPatientParDisciplineTest {
         NotifyResponseDto resultat = service.notifyPatient(r.getId(), USER);
 
         assertThat(resultat.channel()).isEqualTo("SMS");
-        verify(smsSender, times(1)).envoyer(any(), eq(SmsTemplates.DEFAUT_SMS_RESULTAT_BIOLOGIE), any(), any());
+        verify(smsSender, times(1)).envoyer(any(), eq(SmsTemplates.DEFAUT_SMS_RESULTAT_BIOLOGIE), any(), any(), any());
         assertThat(SmsTemplates.DEFAUT_SMS_RESULTAT_BIOLOGIE)
                 .contains("vos résultats d'analyses sont disponibles")
                 .doesNotContainIgnoringCase("pathologi");
@@ -96,7 +96,7 @@ class AvisPatientParDisciplineTest {
 
         service.notifyPatient(r.getId(), USER);
 
-        verify(smsSender).envoyer(any(), eq(SmsTemplates.DEFAUT_SMS_RESULTAT), any(), any());
+        verify(smsSender).envoyer(any(), eq(SmsTemplates.DEFAUT_SMS_RESULTAT), any(), any(), any());
     }
 
     @Test
@@ -110,7 +110,7 @@ class AvisPatientParDisciplineTest {
 
         service.sendSms(r.getId(), USER);
 
-        verify(smsSender).envoyer(any(), eq("Labo X : vos analyses sont prêtes."), any(), any());
+        verify(smsSender).envoyer(any(), eq("Labo X : vos analyses sont prêtes."), any(), any(), any());
         verify(settingAppRepository, never()).findByKeyAndBranchId(SmsTemplates.CLE_SMS_RESULTAT, BRANCHE);
     }
 

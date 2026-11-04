@@ -134,7 +134,8 @@ public class InvoiceSmsNotifier {
         // Clé d'idempotence stable : l'identifiant de la facture. Deux envois pour
         // la même pièce — événement rejoué, double clic — ne produisent qu'un SMS,
         // et qu'une facturation.
-        smsSender.envoyer(destinataire, message, SmsSender.SOURCE_FACTURE, invoice.getId());
+        smsSender.envoyer(destinataire, message, SmsSender.SOURCE_FACTURE, invoice.getId(),
+                codeDeLaDemande(invoice));
         invoice.setShareSmsSentAt(LocalDateTime.now());
         invoiceRepository.save(invoice);
         return destinataire;

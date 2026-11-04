@@ -47,7 +47,7 @@ class InvoiceBipNotifierTest {
     void reglages() {
         when(reglagesDeRappel.audioBip()).thenReturn("custom/9");
         when(reglagesDeRappel.plage()).thenReturn(PLAGE);
-        when(fluidChatClient.bip(any(), any(), any(), any()))
+        when(fluidChatClient.bip(any(), any(), any(), any(), any()))
                 .thenReturn(new FluidChatClient.Appel(70, "queued", null, 0, 0));
     }
 
@@ -58,6 +58,7 @@ class InvoiceBipNotifierTest {
         patient.setTelephone2(telephone2);
         TestOrder bon = new TestOrder();
         bon.setPatient(patient);
+        bon.setCode("26-0042");
 
         Invoice invoice = new Invoice();
         invoice.setId(INVOICE_ID);
@@ -79,7 +80,7 @@ class InvoiceBipNotifierTest {
         valider();
 
         verify(fluidChatClient).bip(eq("+2290197000001"), eq("custom/9"),
-                eq(PLAGE.versCallWindow()), eq("BIP-FA260001"));
+                eq(PLAGE.versCallWindow()), eq("BIP-FA260001"), eq("26-0042"));
         verify(invoiceBipRepository).marquerBip(eq(INVOICE_ID), any());
     }
 
@@ -90,7 +91,7 @@ class InvoiceBipNotifierTest {
 
         valider();
 
-        verify(fluidChatClient).bip(eq("+2290166000002"), any(), any(), any());
+        verify(fluidChatClient).bip(eq("+2290166000002"), any(), any(), any(), any());
     }
 
     @Test
@@ -100,7 +101,7 @@ class InvoiceBipNotifierTest {
 
         valider();
 
-        verify(fluidChatClient, never()).bip(any(), any(), any(), any());
+        verify(fluidChatClient, never()).bip(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -112,7 +113,7 @@ class InvoiceBipNotifierTest {
         facture(null, null);
         valider();
 
-        verify(fluidChatClient, never()).bip(any(), any(), any(), any());
+        verify(fluidChatClient, never()).bip(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -123,14 +124,14 @@ class InvoiceBipNotifierTest {
 
         valider();
 
-        verify(fluidChatClient, never()).bip(any(), any(), any(), any());
+        verify(fluidChatClient, never()).bip(any(), any(), any(), any(), any());
     }
 
     @Test
     @DisplayName("FluidChat en panne : rien ne remonte, la facture reste à biper")
     void panne() {
         facture("97000001", null);
-        when(fluidChatClient.bip(any(), any(), any(), any())).thenThrow(new ExternalApiException("panne"));
+        when(fluidChatClient.bip(any(), any(), any(), any(), any())).thenThrow(new ExternalApiException("panne"));
 
         valider();
 

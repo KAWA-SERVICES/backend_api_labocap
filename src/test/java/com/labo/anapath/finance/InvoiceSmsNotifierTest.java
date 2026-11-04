@@ -66,7 +66,7 @@ class InvoiceSmsNotifierTest {
 
         ArgumentCaptor<String> corps = ArgumentCaptor.forClass(String.class);
         verify(smsSender).envoyer(eq("2290197000001"), corps.capture(),
-                eq(SmsSender.SOURCE_FACTURE), eq(INVOICE_ID));
+                eq(SmsSender.SOURCE_FACTURE), eq(INVOICE_ID), any());
         assertThat(corps.getValue()).contains(LIEN).contains("FA260001");
     }
 
@@ -82,7 +82,7 @@ class InvoiceSmsNotifierTest {
 
         notifier.onInvoiceValidated(new InvoiceValidatedEvent(INVOICE_ID));
 
-        verify(smsSender).envoyer(anyString(), anyString(), anyString(), eq(INVOICE_ID));
+        verify(smsSender).envoyer(anyString(), anyString(), anyString(), eq(INVOICE_ID), any());
     }
 
     @Test
@@ -105,7 +105,7 @@ class InvoiceSmsNotifierTest {
 
         notifier.onInvoiceValidated(new InvoiceValidatedEvent(INVOICE_ID));
 
-        verify(smsSender).envoyer(eq("2290197000002"), anyString(), anyString(), any());
+        verify(smsSender).envoyer(eq("2290197000002"), anyString(), anyString(), any(), any());
         // Le code de la demande part dans le texte du SMS.
         verify(smsTemplates).smsFacture(any(), eq("FA260002"), eq("EX26-0002"), eq(LIEN));
     }
@@ -120,7 +120,7 @@ class InvoiceSmsNotifierTest {
 
         notifier.onInvoiceValidated(new InvoiceValidatedEvent(INVOICE_ID));
 
-        verify(smsSender, never()).envoyer(any(), any(), any(), any());
+        verify(smsSender, never()).envoyer(any(), any(), any(), any(), any());
         verify(shareLinkService, never()).urlDeTelechargement(any());
     }
 
@@ -132,7 +132,7 @@ class InvoiceSmsNotifierTest {
         when(shareLinkService.urlDeTelechargement(invoice)).thenReturn(LIEN);
         when(smsTemplates.smsFacture(any(), any(), any(), any())).thenReturn("message");
         doThrow(new ExternalApiException("Aucune passerelle SMS configurée"))
-                .when(smsSender).envoyer(any(), any(), any(), any());
+                .when(smsSender).envoyer(any(), any(), any(), any(), any());
 
         notifier.onInvoiceValidated(new InvoiceValidatedEvent(INVOICE_ID));
 
@@ -148,7 +148,7 @@ class InvoiceSmsNotifierTest {
         when(shareLinkService.urlDeTelechargement(invoice)).thenReturn(LIEN);
         when(smsTemplates.smsFacture(any(), any(), any(), any())).thenReturn("message");
         doThrow(new ExternalApiException("FluidPay injoignable"))
-                .when(smsSender).envoyer(any(), any(), any(), any());
+                .when(smsSender).envoyer(any(), any(), any(), any(), any());
 
         notifier.onInvoiceValidated(new InvoiceValidatedEvent(INVOICE_ID));
         // Aucune exception ne doit sortir : l'écouteur avale et journalise.
@@ -165,7 +165,7 @@ class InvoiceSmsNotifierTest {
 
         notifier.onInvoiceValidated(new InvoiceValidatedEvent(INVOICE_ID));
 
-        verify(smsSender, never()).envoyer(any(), any(), any(), any());
+        verify(smsSender, never()).envoyer(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -185,7 +185,7 @@ class InvoiceSmsNotifierTest {
         when(invoiceRepository.findWithLockById(INVOICE_ID)).thenReturn(Optional.of(echouee));
         when(shareLinkService.urlDeTelechargement(echouee)).thenReturn(LIEN);
         doThrow(new ExternalApiException("FluidPay injoignable"))
-                .when(smsSender).envoyer(eq("2290197000002"), anyString(), anyString(), any());
+                .when(smsSender).envoyer(eq("2290197000002"), anyString(), anyString(), any(), any());
 
         notifier.onInvoiceValidated(new InvoiceValidatedEvent(INVOICE_ID));
         assertThat(echouee.getShareSmsSentAt()).isNull();
@@ -213,7 +213,7 @@ class InvoiceSmsNotifierTest {
 
         assertThat(destinataire).isEqualTo("2290197000001");
         verify(smsSender).envoyer(eq("2290197000001"), eq("message"),
-                eq(SmsSender.SOURCE_FACTURE), eq(INVOICE_ID));
+                eq(SmsSender.SOURCE_FACTURE), eq(INVOICE_ID), any());
         assertThat(invoice.getShareSmsSentAt()).isNotNull();
     }
 
@@ -235,7 +235,7 @@ class InvoiceSmsNotifierTest {
         assertThatThrownBy(() -> notifier.envoyerALaDemande(INVOICE_ID, BRANCH_ID))
                 .isInstanceOf(InvalidOperationException.class).hasMessageContaining("avoir");
 
-        verify(smsSender, never()).envoyer(any(), any(), any(), any());
+        verify(smsSender, never()).envoyer(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -253,7 +253,7 @@ class InvoiceSmsNotifierTest {
         when(shareLinkService.urlDeTelechargement(invoice)).thenReturn(LIEN);
         when(smsTemplates.smsFacture(any(), any(), any(), any())).thenReturn("message");
         doThrow(new ExternalApiException("La passerelle SMS FluidPay est injoignable."))
-                .when(smsSender).envoyer(anyString(), anyString(), anyString(), any());
+                .when(smsSender).envoyer(anyString(), anyString(), anyString(), any(), any());
 
         assertThatThrownBy(() -> notifier.envoyerALaDemande(INVOICE_ID, BRANCH_ID))
                 .isInstanceOf(ExternalApiException.class);
