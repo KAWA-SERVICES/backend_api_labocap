@@ -127,6 +127,15 @@ class AutonomieDuCreditTest {
     }
 
     @Test
+    @DisplayName("registre illisible : le solde reste servi, sans autonomie")
+    void registreIllisible() {
+        when(fluidChat.mouvements(anyString())).thenThrow(new ExternalApiException("FluidChat injoignable"));
+        AutonomieDuCredit.Etat etat = autonomie.etat(aLUnite(5_000), MAINTENANT);
+        assertThat(etat.niveau()).isEqualTo(OK);
+        assertThat(etat.autonomieJours()).isNull();
+    }
+
+    @Test
     @DisplayName("crédit suffisant ou FluidChat injoignable : aucun courriel")
     void silence() {
         when(fluidChat.portefeuille()).thenReturn(aLUnite(50_000));

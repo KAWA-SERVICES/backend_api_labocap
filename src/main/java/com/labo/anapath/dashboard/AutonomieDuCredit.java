@@ -75,7 +75,13 @@ public class AutonomieDuCredit {
     private long consommationJour(Instant maintenant) {
         Instant calcule = consommationCalculeeLe;
         if (calcule == null || calcule.plus(FRAICHEUR_DE_LA_CONSOMMATION).isBefore(maintenant)) {
-            consommationJourFcfa = mesurer(maintenant);
+            try {
+                consommationJourFcfa = mesurer(maintenant);
+            } catch (RuntimeException e) {
+                // Registre illisible : on garde la dernière mesure plutôt que de
+                // priver la tuile et le bandeau du solde ; nouvel essai dans une heure.
+                log.warn("Registre du crédit SMS et appels illisible : {}", e.getMessage());
+            }
             consommationCalculeeLe = maintenant;
         }
         return consommationJourFcfa;
