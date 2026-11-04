@@ -32,6 +32,8 @@ import java.util.stream.Collectors;
 public class ReglagesDeRappel {
 
     static final String CLE_DELAI_HEURES = "rappel_delai_heures";
+    static final String CLE_INTERVALLE_RELANCE_MINUTES = "rappel_intervalle_minutes";
+    static final String CLE_TENTATIVES_MAX = "rappel_tentatives_max";
     static final String CLE_HEURE_DEBUT = "rappel_heure_debut";
     static final String CLE_HEURE_FIN = "rappel_heure_fin";
     /** Jours d'appel, convention FluidChat : 0 = dimanche … 6 = samedi. */
@@ -43,6 +45,9 @@ public class ReglagesDeRappel {
 
     /** Plage réglementaire (ARCE) par défaut : du lundi au vendredi, 8h–18h. */
     static final int DEFAUT_DELAI_HEURES = 24;
+    static final int DEFAUT_INTERVALLE_RELANCE_MINUTES = 20;
+    /** Appel initial compris : au-delà, le cas reste visible dans le bandeau « à rappeler » du secrétariat. */
+    static final int DEFAUT_TENTATIVES_MAX = 3;
     static final String DEFAUT_HEURE_DEBUT = "08:00";
     static final String DEFAUT_HEURE_FIN = "18:00";
     static final String DEFAUT_JOURS = "1,2,3,4,5";
@@ -60,6 +65,27 @@ public class ReglagesDeRappel {
         } catch (NumberFormatException e) {
             log.warn("{} illisible : défaut {}h", CLE_DELAI_HEURES, DEFAUT_DELAI_HEURES);
             return DEFAUT_DELAI_HEURES;
+        }
+    }
+
+    /** Minutes entre deux tentatives d'appel quand le patient n'a pas répondu. */
+    public int intervalleRelanceMinutes() {
+        try {
+            return Math.max(1, Integer.parseInt(
+                    valeur(CLE_INTERVALLE_RELANCE_MINUTES, String.valueOf(DEFAUT_INTERVALLE_RELANCE_MINUTES)).trim()));
+        } catch (NumberFormatException e) {
+            log.warn("{} illisible : défaut {} min", CLE_INTERVALLE_RELANCE_MINUTES, DEFAUT_INTERVALLE_RELANCE_MINUTES);
+            return DEFAUT_INTERVALLE_RELANCE_MINUTES;
+        }
+    }
+
+    /** Nombre maximal de tentatives (appel initial compris) avant d'arrêter les relances automatiques. */
+    public int tentativesMax() {
+        try {
+            return Math.max(1, Integer.parseInt(valeur(CLE_TENTATIVES_MAX, String.valueOf(DEFAUT_TENTATIVES_MAX)).trim()));
+        } catch (NumberFormatException e) {
+            log.warn("{} illisible : défaut {}", CLE_TENTATIVES_MAX, DEFAUT_TENTATIVES_MAX);
+            return DEFAUT_TENTATIVES_MAX;
         }
     }
 

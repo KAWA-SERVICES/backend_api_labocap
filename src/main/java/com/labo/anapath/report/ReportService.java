@@ -109,7 +109,8 @@ public interface ReportService {
             Discipline discipline);
 
     /**
-     * @param rappel {@code A_RAPPELER} (non joint, ni informé, ni livré) ou une
+     * @param rappel {@code A_RAPPELER} (non joint, ni informé, ni livré), {@code CAS_ANORMAL}
+     *               (total d'appels au-delà de {@code rappel_tentatives_max}) ou une
      *               {@link IssueRappel} ; nul = pas de filtre
      */
     PageResponse<ReportSuiviRowDto> getSuiviList(
@@ -118,6 +119,9 @@ public interface ReportService {
             String dateBegin, String dateEnd,
             Boolean isUrgent, Integer statusFilter, Boolean isLate,
             Discipline discipline, String rappel);
+
+    /** Historique complet des appels de rappel d'un compte rendu, du plus ancien au plus récent. */
+    List<AppelResponseDto> getAppelsHistorique(UUID branchId, UUID reportId);
 
     PageResponse<LogReportResponseDto> getReportLogs(UUID branchId, int page, int size);
 

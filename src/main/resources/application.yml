@@ -80,6 +80,10 @@ app:
     call-follow:
       # Relecture chez FluidChat de l'issue des appels en cours. « - » désactive.
       cron: ${REPORT_CALL_FOLLOW_CRON:0 */10 * * * *}
+    call-retry:
+      # Relance l'appel des patients non joints (réglages rappel_intervalle_minutes
+      # et rappel_tentatives_max de Paramètres). « - » désactive.
+      cron: ${REPORT_CALL_RETRY_CRON:0 */10 * * * *}
   # Adresse publique de l'API, telle qu'un client la voit depuis son téléphone.
   # Sert à construire le lien de téléchargement envoyé par SMS : il doit être
   # joignable depuis l'extérieur, pas seulement depuis le réseau du laboratoire.

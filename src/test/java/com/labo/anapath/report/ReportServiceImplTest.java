@@ -55,6 +55,8 @@ class ReportServiceImplTest {
     /** Périmètre de validation : un mock ne refuse rien (exigerLePerimetre est un no-op). */
     @Mock private ServicePerimetreDeValidation perimetreDeValidation;
     @Mock private ReportVersionRepository reportVersionRepository;
+    @Mock private AppelByReportRepository appelByReportRepository;
+    @Mock private ReglagesDeRappel reglagesDeRappel;
 
     @InjectMocks
     private ReportServiceImpl service;
@@ -503,5 +505,71 @@ class ReportServiceImplTest {
         verify(emailService, never()).sendPostSignatureChangeAlert(
                 any(), any(), any(), any(), any(), any(), any(), any());
         verify(reportVersionRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("getSuiviList - filtre CAS_ANORMAL : seuil lu depuis ReglagesDeRappel, total et anomalie mappés")
+    void getSuiviList_filtreCasAnormal_mappeLeTotalEtLAnomalie() {
+        when(reglagesDeRappel.tentativesMax()).thenReturn(3);
+
+        ReportSuiviProjection p = org.mockito.Mockito.mock(ReportSuiviProjection.class);
+        when(p.getReportId()).thenReturn(REPORT_ID.toString());
+        when(p.getRappelAppelsTotal()).thenReturn(6);
+
+        when(reportRepository.findSuiviRows(
+                eq(BRANCH_ID), any(), any(), any(), any(), any(), any(), any(),
+                eq("CAS_ANORMAL"), any(), eq(3), any(Pageable.class)))
+                .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(p)));
+
+        var result = service.getSuiviList(BRANCH_ID, 0, 20, null, null, null, null,
+                null, null, null, com.labo.anapath.common.Discipline.PATHOLOGY, "CAS_ANORMAL");
+
+        assertThat(result.content()).hasSize(1);
+        ReportSuiviRowDto row = result.content().get(0);
+        assertThat(row.rappelAppelsTotal()).isEqualTo(6);
+        assertThat(row.rappelAnormal()).isTrue();
+    }
+
+    @Test
+    @DisplayName("getSuiviList - filtre de rappel inconnu → InvalidOperationException")
+    void getSuiviList_filtreInconnu_leveInvalidOperationException() {
+        assertThatThrownBy(() -> service.getSuiviList(BRANCH_ID, 0, 20, null, null, null, null,
+                null, null, null, com.labo.anapath.common.Discipline.PATHOLOGY, "PAS_UNE_ISSUE"))
+                .isInstanceOf(InvalidOperationException.class);
+    }
+
+    @Test
+    @DisplayName("getAppelsHistorique - renvoie l'historique chronologique du compte rendu")
+    void getAppelsHistorique_renvoieLHistoriqueChronologique() {
+        Report report = buildDraftReport();
+        report.setId(REPORT_ID);
+        when(reportRepository.findById(REPORT_ID)).thenReturn(Optional.of(report));
+
+        AppelByReport ancien = new AppelByReport();
+        ancien.setAppelId("appel-1");
+        ancien.setIssue(IssueRappel.SANS_REPONSE);
+        AppelByReport recent = new AppelByReport();
+        recent.setAppelId("appel-2");
+        recent.setIssue(IssueRappel.JOINT);
+        when(appelByReportRepository.findByReportIdOrderByCreatedAtAsc(REPORT_ID))
+                .thenReturn(List.of(ancien, recent));
+
+        List<AppelResponseDto> historique = service.getAppelsHistorique(BRANCH_ID, REPORT_ID);
+
+        assertThat(historique).hasSize(2);
+        assertThat(historique.get(0).appelId()).isEqualTo("appel-1");
+        assertThat(historique.get(1).appelId()).isEqualTo("appel-2");
+    }
+
+    @Test
+    @DisplayName("getAppelsHistorique - compte rendu d'une autre agence → ResourceNotFoundException")
+    void getAppelsHistorique_autreAgence_leveResourceNotFoundException() {
+        Report report = buildDraftReport();
+        report.setId(REPORT_ID);
+        report.setBranchId(UUID.randomUUID());
+        when(reportRepository.findById(REPORT_ID)).thenReturn(Optional.of(report));
+
+        assertThatThrownBy(() -> service.getAppelsHistorique(BRANCH_ID, REPORT_ID))
+                .isInstanceOf(ResourceNotFoundException.class);
     }
 }

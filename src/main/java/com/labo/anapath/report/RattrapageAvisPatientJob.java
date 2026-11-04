@@ -8,7 +8,10 @@ import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 
 /**
  * Rappel automatique des patients dont le résultat est prêt.
@@ -41,6 +44,9 @@ public class RattrapageAvisPatientJob {
 
     /** Au-delà, un appel encore « en cours » n'est plus relu : FluidChat a fini depuis longtemps. */
     private static final int SUIVI_JOURS = 7;
+
+    /** Issues finies qu'une relance de FluidChat peut encore changer. */
+    static final Set<IssueRappel> RELANCABLES = Set.of(IssueRappel.SANS_REPONSE, IssueRappel.INJOIGNABLE, IssueRappel.PARTIEL);
 
     private final ReportRepository reportRepository;
     private final NotificationService notificationService;
@@ -105,14 +111,55 @@ public class RattrapageAvisPatientJob {
      */
     @Scheduled(cron = "${app.report.call-follow.cron:0 */10 * * * *}", zone = "Africa/Porto-Novo")
     public void suivreLesAppels() {
-        List<AppelByReport> enCours = appelByReportRepository.findByIssueAndCreatedAtAfterOrderByCreatedAtAsc(
-                IssueRappel.EN_COURS, LocalDateTime.now().minusDays(SUIVI_JOURS), PageRequest.of(0, LOT_MAX));
-        for (AppelByReport appel : enCours) {
+        LocalDateTime depuis = LocalDateTime.now().minusDays(SUIVI_JOURS);
+        List<AppelByReport> aRelire = new ArrayList<>(appelByReportRepository
+                .findByIssueAndCreatedAtAfterOrderByCreatedAtAsc(IssueRappel.EN_COURS, depuis, PageRequest.of(0, LOT_MAX)));
+        // FluidChat relance un appel sans réponse quand le patient rappelle ou
+        // qu'un agent clique « Relancer » : même id, nouvelle issue. Sans cette
+        // relecture, un patient enfin joint resterait « à rappeler ».
+        // ponytail: jusqu'à 2 × LOT_MAX lectures par passage ; espacer celles-ci si FluidChat s'en plaint.
+        aRelire.addAll(appelByReportRepository.findRelancablesNonPrevenus(
+                RELANCABLES, depuis, PageRequest.of(0, LOT_MAX)));
+        for (AppelByReport appel : aRelire) {
             try {
                 notificationService.actualiser(appel);
             } catch (RuntimeException e) {
                 log.warn("Suivi de l'appel {} impossible : {}", appel.getAppelId(), e.getMessage());
             }
+        }
+    }
+
+    /**
+     * Relance l'appel des patients non joints (sans réponse ou injoignables),
+     * {@link ReglagesDeRappel#intervalleRelanceMinutes() X minutes} après la fin
+     * de la dernière tentative, dans la limite de
+     * {@link ReglagesDeRappel#tentativesMax() tentatives} (appel initial compris).
+     *
+     * <p>Au-delà du plafond, aucune autre relance ne part : le cas reste visible
+     * dans le bandeau « à rappeler » du secrétariat ({@code compterARappeler}),
+     * sans action automatique supplémentaire.</p>
+     */
+    @Scheduled(cron = "${app.report.call-retry.cron:0 */10 * * * *}", zone = "Africa/Porto-Novo")
+    public void relancerLesAppelsSansReponse() {
+        if (!reglagesDeRappel.plage().contient(ZonedDateTime.now())) {
+            return;
+        }
+        LocalDateTime avant = LocalDateTime.now().minusMinutes(reglagesDeRappel.intervalleRelanceMinutes());
+        List<AppelByReport> aRelancer = appelByReportRepository.findARelancer(
+                avant, reglagesDeRappel.tentativesMax(), LOT_MAX);
+
+        int relances = 0;
+        for (AppelByReport appel : aRelancer) {
+            UUID reportId = appel.getReport().getId();
+            try {
+                notificationService.callPatient(reportId, null);
+                relances++;
+            } catch (RuntimeException e) {
+                log.warn("Relance de l'appel du compte-rendu {} impossible : {}", reportId, e.getMessage());
+            }
+        }
+        if (relances > 0) {
+            log.info("[scheduler] Relance des patients non joints : {} appel(s) relancé(s)", relances);
         }
     }
 }

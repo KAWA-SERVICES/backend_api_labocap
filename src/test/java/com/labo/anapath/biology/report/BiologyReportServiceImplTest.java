@@ -268,7 +268,9 @@ class BiologyReportServiceImplTest {
                 mock(com.labo.anapath.report.ServicePerimetreDeValidation.class),
                 mock(com.labo.anapath.report.JournalDesRefus.class),
                 new ObjectMapper(),
-                mock(com.labo.anapath.report.ReportVersionRepository.class));
+                mock(com.labo.anapath.report.ReportVersionRepository.class),
+                mock(com.labo.anapath.report.AppelByReportRepository.class),
+                mock(com.labo.anapath.report.ReglagesDeRappel.class));
         private final BiologyReportServiceImpl service = new BiologyReportServiceImpl(reportRepository,
                 coeur, reportMapper, userRepository, analysisRepo, reglages, avancement);
 

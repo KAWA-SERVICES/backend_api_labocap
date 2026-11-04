@@ -56,7 +56,8 @@ public class InvoiceBipNotifier {
         }
         try {
             FluidChatClient.Appel bip = fluidChatClient.bip("+" + numero, audio,
-                    reglagesDeRappel.plage().versCallWindow(), "BIP-" + invoice.getCode());
+                    reglagesDeRappel.plage().versCallWindow(), "BIP-" + invoice.getCode(),
+                    invoice.getTestOrder() != null ? invoice.getTestOrder().getCode() : null);
             invoiceBipRepository.marquerBip(invoice.getId(), LocalDateTime.now());
             log.info("Bip de la facture {} programmé (appel FluidChat {})", invoice.getCode(), bip.id());
         } catch (RuntimeException e) {
