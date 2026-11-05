@@ -2,19 +2,25 @@ package com.labo.anapath.finance;
 
 import com.labo.anapath.common.exception.InvalidOperationException;
 import com.labo.anapath.common.exception.ResourceNotFoundException;
+import com.labo.anapath.common.notification.DemandeFluidChat;
+import com.labo.anapath.common.notification.DemandesEnAttente;
+import com.labo.anapath.common.notification.FluidChatIndisponibleException;
 import com.labo.anapath.common.notification.PhoneNumbers;
 import com.labo.anapath.common.notification.SmsSender;
 import com.labo.anapath.common.notification.SmsTemplates;
 import com.labo.anapath.patient.Patient;
+import com.labo.anapath.report.ReglagesDeRappel;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.event.TransactionalEventListener;
 
 import java.time.LocalDateTime;
+import java.time.ZonedDateTime;
 import java.util.UUID;
 
 /**
@@ -47,6 +53,8 @@ public class InvoiceSmsNotifier {
     private final InvoiceShareLinkService shareLinkService;
     private final SmsTemplates smsTemplates;
     private final SmsSender smsSender;
+    private final DemandesEnAttente demandes;
+    private final ReglagesDeRappel reglagesDeRappel;
 
     /**
      * Envoie le SMS de mise à disposition de la facture.
@@ -87,6 +95,32 @@ public class InvoiceSmsNotifier {
     }
 
     /**
+     * Renvoie les SMS de facture que FluidChat n'a pas reçus, dans la plage d'appel
+     * ({@code FLUIDCHAT_RESEND_CRON}). La référence reste l'identifiant de la
+     * facture : un SMS que FluidChat avait reçu n'est pas envoyé deux fois.
+     */
+    @Scheduled(cron = "${app.report.fluidchat-resend.cron:0 7-57/10 * * * *}", zone = "Africa/Porto-Novo")
+    public void renvoyerLesSmsEnAttente() {
+        if (!reglagesDeRappel.plage().contient(ZonedDateTime.now())) {
+            return;
+        }
+        demandes.rejouer(DemandeFluidChat.Type.SMS_FACTURE, invoiceId -> {
+            Invoice invoice = invoiceRepository.findWithLockById(invoiceId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Facture", invoiceId));
+            if (invoice.getShareSmsSentAt() != null) {
+                demandes.resoudre(DemandeFluidChat.Type.SMS_FACTURE, invoiceId);
+                return;
+            }
+            try {
+                envoyer(invoice);
+            } catch (FluidChatIndisponibleException e) {
+                // Absorbée pour que la transaction valide le jeton du lien : FluidChat a
+                // peut-être déjà envoyé ce lien-là. La demande, restée en file, dit la panne.
+            }
+        });
+    }
+
+    /**
      * Envoi à la demande d'un agent, quand le SMS automatique n'est jamais parti
      * (passerelle en panne au moment de la normalisation, numéro ajouté depuis).
      *
@@ -99,7 +133,9 @@ public class InvoiceSmsNotifier {
      * @throws com.labo.anapath.common.exception.ExternalApiException si la passerelle refuse
      *                                   ou ne répond pas
      */
-    @Transactional
+    // Sans rollback sur une panne de FluidChat : il a peut-être envoyé le lien,
+    // dont le jeton doit donc survivre.
+    @Transactional(noRollbackFor = FluidChatIndisponibleException.class)
     public String envoyerALaDemande(UUID invoiceId, UUID branchId) {
         Invoice invoice = invoiceRepository.findWithLockByIdAndBranchId(invoiceId, branchId)
                 .orElseThrow(() -> new ResourceNotFoundException("Facture", invoiceId));
@@ -134,8 +170,16 @@ public class InvoiceSmsNotifier {
         // Clé d'idempotence stable : l'identifiant de la facture. Deux envois pour
         // la même pièce — événement rejoué, double clic — ne produisent qu'un SMS,
         // et qu'une facturation.
-        smsSender.envoyer(destinataire, message, SmsSender.SOURCE_FACTURE, invoice.getId(),
-                codeDeLaDemande(invoice));
+        try {
+            smsSender.envoyer(destinataire, message, SmsSender.SOURCE_FACTURE, invoice.getId(),
+                    codeDeLaDemande(invoice));
+        } catch (FluidChatIndisponibleException e) {
+            demandes.enregistrer(DemandeFluidChat.Type.SMS_FACTURE, invoice.getId(), invoice.getBranchId(),
+                    invoice.getId().toString(), e.getMessage());
+            throw new FluidChatIndisponibleException(
+                    "FluidChat ne répond pas : le SMS partira automatiquement à son retour.", e);
+        }
+        demandes.resoudre(DemandeFluidChat.Type.SMS_FACTURE, invoice.getId());
         invoice.setShareSmsSentAt(LocalDateTime.now());
         invoiceRepository.save(invoice);
         return destinataire;

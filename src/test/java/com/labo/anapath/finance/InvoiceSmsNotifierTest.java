@@ -36,6 +36,8 @@ class InvoiceSmsNotifierTest {
     @Mock private InvoiceShareLinkService shareLinkService;
     @Mock private SmsTemplates smsTemplates;
     @Mock private SmsSender smsSender;
+    @Mock private com.labo.anapath.common.notification.DemandesEnAttente demandes;
+    @Mock private com.labo.anapath.report.ReglagesDeRappel reglagesDeRappel;
 
     @InjectMocks private InvoiceSmsNotifier notifier;
 
@@ -266,5 +268,22 @@ class InvoiceSmsNotifierTest {
         when(invoiceRepository.findWithLockByIdAndBranchId(INVOICE_ID, BRANCH_ID)).thenReturn(Optional.empty());
         assertThatThrownBy(() -> notifier.envoyerALaDemande(INVOICE_ID, BRANCH_ID))
                 .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("FluidChat injoignable → SMS gardé pour renvoi, référence = identifiant de la facture, non marqué")
+    void fluidChatInjoignable_garde() {
+        Invoice invoice = factureAvecPatient("97000005");
+        when(invoiceRepository.findWithLockById(INVOICE_ID)).thenReturn(Optional.of(invoice));
+        when(shareLinkService.urlDeTelechargement(invoice)).thenReturn(LIEN);
+        when(smsTemplates.smsFacture(any(), any(), any(), any())).thenReturn("message");
+        doThrow(new com.labo.anapath.common.notification.FluidChatIndisponibleException("indisponible", null))
+                .when(smsSender).envoyer(any(), any(), any(), any(), any());
+
+        notifier.onInvoiceValidated(new InvoiceValidatedEvent(INVOICE_ID));
+
+        verify(demandes).enregistrer(eq(com.labo.anapath.common.notification.DemandeFluidChat.Type.SMS_FACTURE),
+                eq(INVOICE_ID), any(), eq(INVOICE_ID.toString()), any());
+        org.assertj.core.api.Assertions.assertThat(invoice.getShareSmsSentAt()).isNull();
     }
 }

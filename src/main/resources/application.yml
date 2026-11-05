@@ -84,6 +84,11 @@ app:
       # Relance l'appel des patients non joints (réglages rappel_intervalle_minutes
       # et rappel_tentatives_max de Paramètres). « - » désactive.
       cron: ${REPORT_CALL_RETRY_CRON:0 */10 * * * *}
+    fluidchat-resend:
+      # Renvoi des appels, bips et SMS que FluidChat n'a pas reçus (panne réseau,
+      # 502/503/504), même clé, dans la plage d'appel, trois jours au plus.
+      # Décalé des autres tâches pour ne pas croiser leurs envois. « - » désactive.
+      cron: ${FLUIDCHAT_RESEND_CRON:0 7-57/10 * * * *}
   # Adresse publique de l'API, telle qu'un client la voit depuis son téléphone.
   # Sert à construire le lien de téléchargement envoyé par SMS : il doit être
   # joignable depuis l'extérieur, pas seulement depuis le réseau du laboratoire.

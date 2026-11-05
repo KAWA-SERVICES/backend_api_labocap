@@ -19,6 +19,7 @@ import org.springframework.web.client.RestTemplate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -49,6 +50,8 @@ public class FluidChatClient {
     static final List<String> RELANCER_SUR = List.of("no_answer", "busy", "unreachable");
     /** Un bip qui a sonné sans décroché a atteint son but : seul un bip qui n'est pas passé est relancé. */
     static final List<String> RELANCER_BIP_SUR = List.of("busy", "unreachable");
+    /** Statuts qui disent que FluidChat n'a pas traité la demande : elle se renvoie telle quelle. */
+    static final Set<Integer> PASSERELLE_EN_PANNE = Set.of(502, 503, 504);
     /** Longueur maximale du nom d'un contact chez FluidChat. */
     static final int NOM_MAX = 120;
 
@@ -144,8 +147,11 @@ public class FluidChatClient {
      * @param plage     {@code call_window} : hors de cette plage, l'appel et ses relances attendent
      * @param reference renvoyée telle quelle, visible dans « Voix › Historique » de FluidChat
      * @param nom       voir {@link #nommer}
+     * @param secours   voir {@link #fiabiliser}
+     * @param cle       voir {@link #fiabiliser}
      */
-    public Appel lancer(String to, String audio, Map<String, Object> plage, String reference, String nom) {
+    public Appel lancer(String to, String audio, Map<String, Object> plage, String reference, String nom,
+                        String secours, String cle) {
         Map<String, Object> corps = new HashMap<>(Map.of(
                 "to", to,
                 "audio", audioFluidChat(audio),
@@ -155,6 +161,7 @@ public class FluidChatClient {
                 "call_window", plage,
                 "reference", reference == null ? "" : reference));
         nommer(corps, nom);
+        fiabiliser(corps, secours, cle);
         return echanger(HttpMethod.POST, "/v1/api/calls", corps);
     }
 
@@ -165,7 +172,8 @@ public class FluidChatClient {
      * @param audio joué seulement si le patient décroche ; nul : FluidChat raccroche aussitôt
      * @param nom   voir {@link #nommer}
      */
-    public Appel bip(String to, String audio, Map<String, Object> plage, String reference, String nom) {
+    public Appel bip(String to, String audio, Map<String, Object> plage, String reference, String nom,
+                     String secours, String cle) {
         Map<String, Object> corps = new HashMap<>(Map.of(
                 "to", to,
                 "bip", true,
@@ -178,6 +186,7 @@ public class FluidChatClient {
             corps.put("audio", audioFluidChat(audio));
         }
         nommer(corps, nom);
+        fiabiliser(corps, secours, cle);
         return echanger(HttpMethod.POST, "/v1/api/calls", corps);
     }
 
@@ -210,6 +219,24 @@ public class FluidChatClient {
         if (nom != null && !nom.isBlank()) {
             String n = nom.strip();
             corps.put("name", n.length() > NOM_MAX ? n.substring(0, NOM_MAX) : n);
+        }
+    }
+
+    /**
+     * Champs facultatifs d'un appel ou d'un bip (§3 de l'API FluidChat).
+     *
+     * @param secours {@code fallback_to} : appelé, autant de fois, quand aucune
+     *                tentative n'a abouti sur {@code to} ; nul = un seul numéro
+     * @param cle     {@code idempotency_key} : une par appel voulu, renvoyée à
+     *                l'identique après une panne — FluidChat rend alors l'appel
+     *                existant au lieu d'en lancer un second
+     */
+    static void fiabiliser(Map<String, Object> corps, String secours, String cle) {
+        if (secours != null) {
+            corps.put("fallback_to", secours);
+        }
+        if (cle != null) {
+            corps.put("idempotency_key", cle);
         }
     }
 
@@ -289,6 +316,9 @@ public class FluidChatClient {
             return reponse;
         } catch (RestClientResponseException e) {
             log.warn("FluidChat {} {} : {}", methode, chemin, e.getStatusCode());
+            if (PASSERELLE_EN_PANNE.contains(e.getStatusCode().value())) {
+                throw new FluidChatIndisponibleException("Service d'appel indisponible", e);
+            }
             Erreur.Detail detail = detail(e);
             String message = messageDErreur(e, detail);
             // Un refus qui demande une action de l'utilisateur (recharger, attendre,
@@ -300,7 +330,7 @@ public class FluidChatClient {
             // Le détail (adresse, corps de réponse) reste au journal : ce message
             // remonte tel quel au client.
             log.warn("FluidChat {} {} : {}", methode, chemin, e.getMessage());
-            throw new ExternalApiException("Service d'appel indisponible", e);
+            throw new FluidChatIndisponibleException("Service d'appel indisponible", e);
         }
     }
 
