@@ -63,4 +63,12 @@ class PhoneNumbersTest {
         assertThat(PhoneNumbers.toInternational("0197000001")).isEqualTo("2290197000001");
         assertThat(PhoneNumbers.toInternational("+229 01 97 00 00 01")).isEqualTo("2290197000001");
     }
+
+    @Test
+    void secondaire_seulementSiDeuxNumerosDifferents() {
+        assertThat(PhoneNumbers.secondaire("97000001", "66000002")).isEqualTo("2290166000002");
+        assertThat(PhoneNumbers.secondaire("97000001", "+229 01 97 00 00 01")).isNull();
+        assertThat(PhoneNumbers.secondaire(" ", "66000002")).isNull();
+        assertThat(PhoneNumbers.secondaire("97000001", null)).isNull();
+    }
 }

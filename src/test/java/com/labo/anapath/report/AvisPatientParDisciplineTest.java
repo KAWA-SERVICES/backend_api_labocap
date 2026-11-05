@@ -45,7 +45,9 @@ class AvisPatientParDisciplineTest {
     private final NotificationServiceImpl service = new NotificationServiceImpl(reportRepository,
             mock(AppelByReportRepository.class), mock(TestOrderRepository.class), mock(LogReportRepository.class),
             templates, mock(UserRepository.class), mock(FluidChatClient.class), mock(ReglagesDeRappel.class),
-            smsSender);
+            smsSender, new com.labo.anapath.common.notification.DemandesEnAttente(
+                    mock(com.labo.anapath.common.notification.DemandeFluidChatRepository.class),
+                    mock(org.springframework.transaction.support.TransactionTemplate.class)));
 
     private Report compteRendu(Discipline discipline) {
         Patient patient = new Patient();

@@ -1,5 +1,8 @@
 package com.labo.anapath.report;
 
+import com.labo.anapath.common.exception.InvalidOperationException;
+import com.labo.anapath.common.notification.DemandeFluidChat;
+import com.labo.anapath.common.notification.DemandesEnAttente;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
@@ -52,6 +55,35 @@ public class RattrapageAvisPatientJob {
     private final NotificationService notificationService;
     private final ReglagesDeRappel reglagesDeRappel;
     private final AppelByReportRepository appelByReportRepository;
+    private final DemandesEnAttente demandes;
+
+    /**
+     * Renvoie les SMS et appels d'avis que FluidChat n'a pas reçus, avec leur clé
+     * d'origine, toutes les 10 minutes de la plage d'appel ({@code FLUIDCHAT_RESEND_CRON}).
+     *
+     * <p>Un patient déjà prévenu entre-temps (marqué informé, résultat retiré)
+     * n'est plus appelé : la demande est abandonnée.</p>
+     */
+    @Scheduled(cron = "${app.report.fluidchat-resend.cron:0 7-57/10 * * * *}", zone = "Africa/Porto-Novo")
+    public void renvoyerLesDemandesEnAttente() {
+        if (!reglagesDeRappel.plage().contient(ZonedDateTime.now())) {
+            return;
+        }
+        demandes.rejouer(DemandeFluidChat.Type.SMS_RESULTAT, id -> {
+            exigerNonPrevenu(id);
+            notificationService.sendSms(id, null);
+        });
+        demandes.rejouer(DemandeFluidChat.Type.APPEL_RESULTAT, id -> {
+            exigerNonPrevenu(id);
+            notificationService.callPatient(id, null);
+        });
+    }
+
+    private void exigerNonPrevenu(UUID reportId) {
+        if (reportRepository.findById(reportId).map(r -> r.isCalled() || r.isDelivered()).orElse(true)) {
+            throw new InvalidOperationException("Patient déjà prévenu ou compte rendu introuvable");
+        }
+    }
 
     /**
      * Toutes les 15 minutes par défaut ({@code REPORT_NOTIFY_RETRY_CRON}, « - »

@@ -1,6 +1,7 @@
 package com.labo.anapath.report;
 
 import com.labo.anapath.common.notification.FluidChatClient;
+import com.labo.anapath.common.notification.FluidChatIndisponibleException;
 import com.labo.anapath.common.notification.SmsSender;
 import com.labo.anapath.patient.Patient;
 import com.labo.anapath.patient.PatientRepository;
@@ -58,6 +59,7 @@ class RappelAutomatiqueIT {
         registry.add("app.report.notify-retry.cron", () -> "-");
         registry.add("app.report.call-follow.cron", () -> "-");
         registry.add("app.report.call-retry.cron", () -> "-");
+        registry.add("app.report.fluidchat-resend.cron", () -> "-");
     }
 
     private static final UUID AGENCE = UUID.fromString("00000000-0000-0000-0000-000000000001");
@@ -71,6 +73,7 @@ class RappelAutomatiqueIT {
     @AfterEach
     void nettoyerLesDonnees() {
         jdbc.update("DELETE FROM appel_by_reports");
+        jdbc.update("DELETE FROM demandes_fluidchat");
         jdbc.update("DELETE FROM log_reports");
         jdbc.update("DELETE FROM reports");
         jdbc.update("DELETE FROM test_orders");
@@ -98,14 +101,14 @@ class RappelAutomatiqueIT {
         when(reglagesDeRappel.delaiHeures()).thenReturn(24);
         when(reglagesDeRappel.audio(any())).thenReturn("custom/16");
         when(reglagesDeRappel.plage()).thenReturn(TOUJOURS_OUVERT);
-        when(fluidChatClient.lancer(anyString(), anyString(), any(), anyString(), any()))
+        when(fluidChatClient.lancer(anyString(), anyString(), any(), anyString(), any(), any(), any()))
                 .thenReturn(new FluidChatClient.Appel(89, "queued", null, null, 0));
         Report report = compteRenduValideIlYA30h();
 
         job.rattraperAvisEnAttente();
         job.rattraperAvisEnAttente();
 
-        verify(fluidChatClient, times(1)).lancer(anyString(), anyString(), any(), anyString(), any());
+        verify(fluidChatClient, times(1)).lancer(anyString(), anyString(), any(), anyString(), any(), any(), any());
         assertThat(reportRepository.findById(report.getId()).orElseThrow().getPatientNotifiedAt()).isNotNull();
         assertThat(appelRepository.findFirstByReportIdOrderByCreatedAtDesc(report.getId()))
                 .hasValueSatisfying(a -> assertThat(a.getAppelId()).isEqualTo("89"));
@@ -115,12 +118,45 @@ class RappelAutomatiqueIT {
     }
 
     @Test
+    @DisplayName("FluidChat injoignable : SMS et appel gardés malgré l'annulation, renvoyés avec la même clé à son retour")
+    void panneDeFluidChat_renvoiAvecLaMemeCle() {
+        when(reglagesDeRappel.delaiHeures()).thenReturn(24);
+        when(reglagesDeRappel.audio(any())).thenReturn("custom/16");
+        when(reglagesDeRappel.plage()).thenReturn(TOUJOURS_OUVERT);
+        when(fluidChatClient.lancer(anyString(), anyString(), any(), anyString(), any(), any(), any()))
+                .thenThrow(new FluidChatIndisponibleException("Service d'appel indisponible", null));
+        org.mockito.Mockito.doThrow(new FluidChatIndisponibleException("Service d'appel indisponible", null))
+                .when(smsSender).envoyer(any(), any(), any(), any(), any());
+        Report report = compteRenduValideIlYA30h("26-3900");
+
+        job.rattraperAvisEnAttente();
+        job.rattraperAvisEnAttente();
+
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM demandes_fluidchat WHERE cible_id = ? AND abandonnee_le IS NULL",
+                Integer.class, report.getId())).isEqualTo(2);
+        org.mockito.ArgumentCaptor<String> cles = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(fluidChatClient, times(2)).lancer(anyString(), anyString(), any(), anyString(), any(), any(), cles.capture());
+        assertThat(cles.getAllValues().get(1)).isEqualTo(cles.getAllValues().get(0));
+
+        // FluidChat revient.
+        org.mockito.Mockito.reset(fluidChatClient, smsSender);
+        when(fluidChatClient.lancer(anyString(), anyString(), any(), anyString(), any(), any(), any()))
+                .thenReturn(new FluidChatClient.Appel(777, "queued", null, null, 0));
+        job.renvoyerLesDemandesEnAttente();
+
+        verify(fluidChatClient).lancer(anyString(), anyString(), any(), anyString(), any(), any(),
+                org.mockito.ArgumentMatchers.eq(cles.getValue()));
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM demandes_fluidchat", Integer.class)).isZero();
+        assertThat(reportRepository.findById(report.getId()).orElseThrow().getPatientNotifiedAt()).isNotNull();
+    }
+
+    @Test
     @DisplayName("suivi : un appel joint est relu une fois, le patient est marqué informé")
     void appelJointReluUneFois() {
         when(reglagesDeRappel.delaiHeures()).thenReturn(24);
         when(reglagesDeRappel.audio(any())).thenReturn("custom/16");
         when(reglagesDeRappel.plage()).thenReturn(TOUJOURS_OUVERT);
-        when(fluidChatClient.lancer(anyString(), anyString(), any(), anyString(), any()))
+        when(fluidChatClient.lancer(anyString(), anyString(), any(), anyString(), any(), any(), any()))
                 .thenReturn(new FluidChatClient.Appel(302, "queued", null, null, 0));
         when(fluidChatClient.lire(302L))
                 .thenReturn(new FluidChatClient.Appel(302, "answered", "completed", 100, 1));
@@ -147,7 +183,7 @@ class RappelAutomatiqueIT {
 
         job.relancerLesAppelsSansReponse();
 
-        verify(fluidChatClient, times(0)).lancer(anyString(), anyString(), any(), anyString(), any());
+        verify(fluidChatClient, times(0)).lancer(anyString(), anyString(), any(), anyString(), any(), any(), any());
     }
 
     @Test
@@ -157,14 +193,14 @@ class RappelAutomatiqueIT {
         when(reglagesDeRappel.plage()).thenReturn(TOUJOURS_OUVERT);
         when(reglagesDeRappel.intervalleRelanceMinutes()).thenReturn(20);
         when(reglagesDeRappel.tentativesMax()).thenReturn(3);
-        when(fluidChatClient.lancer(anyString(), anyString(), any(), anyString(), any()))
+        when(fluidChatClient.lancer(anyString(), anyString(), any(), anyString(), any(), any(), any()))
                 .thenReturn(new FluidChatClient.Appel(90, "queued", null, null, 0));
         Report report = compteRenduValideIlYA30h("26-9002");
         appelTermine(report, IssueRappel.SANS_REPONSE, LocalDateTime.now().minusMinutes(25));
 
         job.relancerLesAppelsSansReponse();
 
-        verify(fluidChatClient, times(1)).lancer(anyString(), anyString(), any(), anyString(), any());
+        verify(fluidChatClient, times(1)).lancer(anyString(), anyString(), any(), anyString(), any(), any(), any());
         assertThat(appelRepository.findAll().stream()
                 .filter(a -> report.getId().equals(a.getReport().getId())))
                 .hasSize(2);
@@ -182,7 +218,7 @@ class RappelAutomatiqueIT {
 
         job.relancerLesAppelsSansReponse();
 
-        verify(fluidChatClient, times(0)).lancer(anyString(), anyString(), any(), anyString(), any());
+        verify(fluidChatClient, times(0)).lancer(anyString(), anyString(), any(), anyString(), any(), any(), any());
     }
 
     @Test
@@ -207,7 +243,7 @@ class RappelAutomatiqueIT {
         assertThat(appelRepository.findById(ancien.getId()).orElseThrow().getIssue()).isEqualTo(IssueRappel.JOINT);
         assertThat(reportRepository.findById(report.getId()).orElseThrow().isCalled()).isTrue();
         // Prévenu : ni nouvel appel, ni relecture supplémentaire.
-        verify(fluidChatClient, times(0)).lancer(anyString(), anyString(), any(), anyString(), any());
+        verify(fluidChatClient, times(0)).lancer(anyString(), anyString(), any(), anyString(), any(), any(), any());
         verify(fluidChatClient, times(1)).lire(401L);
     }
 

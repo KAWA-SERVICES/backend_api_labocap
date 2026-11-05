@@ -1,7 +1,10 @@
 package com.labo.anapath.finance;
 
 import com.labo.anapath.common.exception.ExternalApiException;
+import com.labo.anapath.common.notification.DemandeFluidChat;
+import com.labo.anapath.common.notification.DemandesEnAttente;
 import com.labo.anapath.common.notification.FluidChatClient;
+import com.labo.anapath.common.notification.FluidChatIndisponibleException;
 import com.labo.anapath.patient.Patient;
 import com.labo.anapath.report.ReglagesDeRappel;
 import com.labo.anapath.testorder.TestOrder;
@@ -36,6 +39,7 @@ class InvoiceBipNotifierTest {
     @Mock private InvoiceBipRepository invoiceBipRepository;
     @Mock private FluidChatClient fluidChatClient;
     @Mock private ReglagesDeRappel reglagesDeRappel;
+    @Mock private DemandesEnAttente demandes;
 
     @InjectMocks private InvoiceBipNotifier notifier;
 
@@ -47,7 +51,9 @@ class InvoiceBipNotifierTest {
     void reglages() {
         when(reglagesDeRappel.audioBip()).thenReturn("custom/9");
         when(reglagesDeRappel.plage()).thenReturn(PLAGE);
-        when(fluidChatClient.bip(any(), any(), any(), any(), any()))
+        when(demandes.cle(any(), any(), any()))
+                .thenAnswer(i -> ((java.util.function.Supplier<String>) i.getArgument(2)).get());
+        when(fluidChatClient.bip(any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new FluidChatClient.Appel(70, "queued", null, 0, 0));
     }
 
@@ -80,7 +86,7 @@ class InvoiceBipNotifierTest {
         valider();
 
         verify(fluidChatClient).bip(eq("+2290197000001"), eq("custom/9"),
-                eq(PLAGE.versCallWindow()), eq("BIP-FA260001"), eq("26-0042"));
+                eq(PLAGE.versCallWindow()), eq("BIP-FA260001"), eq("26-0042"), any(), any());
         verify(invoiceBipRepository).marquerBip(eq(INVOICE_ID), any());
     }
 
@@ -91,7 +97,7 @@ class InvoiceBipNotifierTest {
 
         valider();
 
-        verify(fluidChatClient).bip(eq("+2290166000002"), any(), any(), any(), any());
+        verify(fluidChatClient).bip(eq("+2290166000002"), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -101,7 +107,7 @@ class InvoiceBipNotifierTest {
 
         valider();
 
-        verify(fluidChatClient, never()).bip(any(), any(), any(), any(), any());
+        verify(fluidChatClient, never()).bip(any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -113,7 +119,7 @@ class InvoiceBipNotifierTest {
         facture(null, null);
         valider();
 
-        verify(fluidChatClient, never()).bip(any(), any(), any(), any(), any());
+        verify(fluidChatClient, never()).bip(any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -124,17 +130,53 @@ class InvoiceBipNotifierTest {
 
         valider();
 
-        verify(fluidChatClient, never()).bip(any(), any(), any(), any(), any());
+        verify(fluidChatClient, never()).bip(any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
     @DisplayName("FluidChat en panne : rien ne remonte, la facture reste à biper")
     void panne() {
         facture("97000001", null);
-        when(fluidChatClient.bip(any(), any(), any(), any(), any())).thenThrow(new ExternalApiException("panne"));
+        when(fluidChatClient.bip(any(), any(), any(), any(), any(), any(), any())).thenThrow(new ExternalApiException("panne"));
 
         valider();
 
         verify(invoiceBipRepository, never()).marquerBip(any(), any());
+    }
+
+    @Test
+    @DisplayName("deux numéros : le téléphone 2 en fallback_to, clé bip-…")
+    void numeroSecondaire() {
+        facture("97000001", "66000002");
+
+        valider();
+
+        verify(fluidChatClient).bip(eq("+2290197000001"), any(), any(), any(), any(),
+                eq("+2290166000002"), org.mockito.ArgumentMatchers.startsWith("bip-"));
+    }
+
+    @Test
+    @DisplayName("FluidChat injoignable : le bip est gardé pour renvoi avec sa clé, facture non marquée")
+    void injoignable_garde() {
+        facture("97000001", null);
+        org.mockito.Mockito.doReturn("bip-garde").when(demandes).cle(any(), any(), any());
+        when(fluidChatClient.bip(any(), any(), any(), any(), any(), any(), any()))
+                .thenThrow(new FluidChatIndisponibleException("Service d'appel indisponible", null));
+
+        valider();
+
+        verify(demandes).enregistrer(eq(DemandeFluidChat.Type.BIP_FACTURE), eq(INVOICE_ID), any(), eq("bip-garde"), any());
+        verify(invoiceBipRepository, never()).marquerBip(any(), any());
+    }
+
+    @Test
+    @DisplayName("bip en attente devenu sans objet (facture déjà bipée) : il quitte la file sans appel")
+    void sansObjet_resolu() {
+        facture("97000001", null).setBipSentAt(LocalDateTime.now());
+
+        valider();
+
+        verify(demandes).resoudre(DemandeFluidChat.Type.BIP_FACTURE, INVOICE_ID);
+        verify(fluidChatClient, never()).bip(any(), any(), any(), any(), any(), any(), any());
     }
 }
