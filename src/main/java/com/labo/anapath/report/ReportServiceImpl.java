@@ -758,6 +758,35 @@ public class ReportServiceImpl implements ReportService {
         return reportMapper.toResponseDto(saved);
     }
 
+    /**
+     * L'écran l'appelle toutes les 15 secondes pendant la saisie. Il ne touche
+     * ni au statut, ni aux signataires, ni au journal, ni aux versions : quinze
+     * secondes de frappe ne sont pas une opération à tracer. C'est pourquoi il
+     * se limite à un compte-rendu en attente et jamais signé : au-delà, toute
+     * retouche doit passer par {@link #update}, qui conserve la version et la
+     * trace « après signature ».
+     */
+    @Override
+    @Transactional
+    public void enregistrerBrouillon(UUID id, ReportRequestDto dto) {
+        Report report = charger(id);
+        exigerAnatomiePathologique(report);
+        if (report.getStatus() != ReportStatus.DRAFT || report.getSignatureDate() != null) {
+            throw new InvalidOperationException(
+                    "Ce compte-rendu est validé ou signé : enregistrez-le avec « Mettre à jour ».");
+        }
+        report.setContent(dto.getContent());
+        report.setContentMicro(dto.getContentMicro());
+        report.setComment(dto.getComment());
+        report.setCommentSup(dto.getCommentSup());
+        report.setDescriptionSupplementaire(
+                dto.getDescriptionSupplementaire() != null ? dto.getDescriptionSupplementaire() : "");
+        report.setDescriptionSupplementaireMicro(
+                dto.getDescriptionSupplementaireMicro() != null ? dto.getDescriptionSupplementaireMicro() : "");
+        report.setReceiverName(dto.getReceiverName());
+        reportRepository.save(report);
+    }
+
     /** Libellé de l'action portée au journal ; sert aussi de critère de relecture. */
     static final String ACTION_APRES_SIGNATURE = "Modification après signature";
 

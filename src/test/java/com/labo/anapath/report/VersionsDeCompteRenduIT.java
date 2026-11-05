@@ -268,6 +268,46 @@ class VersionsDeCompteRenduIT {
                 .satisfies(v -> assertThat(v.getStatus()).isEqualTo(ReportStatus.DELIVERED));
     }
 
+    // ------------------------------------------------------------------ brouillon
+
+    private ResponseEntity<ApiResponse<Void>> brouillon(Report r, String texte) {
+        ReportRequestDto dto = new ReportRequestDto();
+        dto.setContent(texte);
+        dto.setStatus("VALIDATED"); // ignoré : le brouillon ne change jamais l'état
+        return rest.exchange(url("/" + r.getId() + "/brouillon"), HttpMethod.PATCH,
+                new HttpEntity<>(dto, enTetes(MEDECIN)), new ParameterizedTypeReference<>() {});
+    }
+
+    @Test
+    @DisplayName("Brouillon d'un compte-rendu en attente : texte enregistré, ni état, ni journal, ni version")
+    void brouillon_enAttente_enregistreSansTrace() {
+        Report r = compteRendu(ReportStatus.DRAFT, null);
+        r.setSignatureDate(null);
+        r = reportRepository.save(r);
+
+        assertThat(brouillon(r, "<p>Saisie en cours</p>").getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        Report relu = reportRepository.findById(r.getId()).orElseThrow();
+        assertThat(relu.getContent()).isEqualTo("<p>Saisie en cours</p>");
+        assertThat(relu.getStatus()).isEqualTo(ReportStatus.DRAFT);
+        assertThat(relu.getSignatureDate()).isNull();
+        assertThat(logReportRepository.findByReportIdOrderByCreatedAtDesc(r.getId())).isEmpty();
+        assertThat(reportVersionRepository.countByReportId(r.getId())).isZero();
+    }
+
+    @Test
+    @DisplayName("Brouillon d'un compte-rendu validé ou signé → 422, texte intact")
+    void brouillon_valideOuSigne_refuse() {
+        Report valide = compteRendu(ReportStatus.VALIDATED, medecin);
+        Report signeEnAttente = compteRendu(ReportStatus.DRAFT, medecin);
+
+        for (Report r : List.of(valide, signeEnAttente)) {
+            assertThat(brouillon(r, "<p>Écrasé</p>").getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
+            assertThat(reportRepository.findById(r.getId()).orElseThrow().getContent())
+                    .isEqualTo("<p>Texte d'origine</p>");
+        }
+    }
+
     // ------------------------------------------------------------------ ajout seul
 
     /**
