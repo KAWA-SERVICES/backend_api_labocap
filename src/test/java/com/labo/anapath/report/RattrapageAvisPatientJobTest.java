@@ -35,6 +35,7 @@ class RattrapageAvisPatientJobTest {
     @Mock private NotificationService notificationService;
     @Mock private ReglagesDeRappel reglagesDeRappel;
     @Mock private AppelByReportRepository appelByReportRepository;
+    @Mock private com.labo.anapath.common.notification.DemandesEnAttente demandes;
 
     @InjectMocks private RattrapageAvisPatientJob job;
 
@@ -151,5 +152,30 @@ class RattrapageAvisPatientJobTest {
         assertThat(plage.contient(ZonedDateTime.of(2026, 10, 31, 10, 0, 0, 0, porto))).isFalse();
         // 17h30 UTC = 18h30 à Porto-Novo : hors plage, même si l'horloge serveur dit 17h30.
         assertThat(plage.contient(ZonedDateTime.of(2026, 10, 30, 17, 30, 0, 0, java.time.ZoneOffset.UTC))).isFalse();
+    }
+
+    @Test
+    @DisplayName("renvoi : un patient prévenu entre-temps n'est plus appelé, les autres le sont")
+    @SuppressWarnings("unchecked")
+    void renvoi_patientDejaPrevenu() {
+        // Plage ouverte tous les jours, toute la journée : le test ne dépend pas de l'heure.
+        when(reglagesDeRappel.plage()).thenReturn(new ReglagesDeRappel.Plage(
+                LocalTime.MIN, LocalTime.MAX, Set.of(0, 1, 2, 3, 4, 5, 6)));
+        Report prevenu = new Report();
+        prevenu.setCalled(true);
+        UUID prevenuId = UUID.randomUUID();
+        UUID aAppeler = UUID.randomUUID();
+        when(reportRepository.findById(prevenuId)).thenReturn(java.util.Optional.of(prevenu));
+        when(reportRepository.findById(aAppeler)).thenReturn(java.util.Optional.of(new Report()));
+        ArgumentCaptor<java.util.function.Consumer<UUID>> envoi = ArgumentCaptor.forClass(java.util.function.Consumer.class);
+
+        job.renvoyerLesDemandesEnAttente();
+
+        verify(demandes).rejouer(eq(com.labo.anapath.common.notification.DemandeFluidChat.Type.APPEL_RESULTAT), envoi.capture());
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> envoi.getValue().accept(prevenuId))
+                .isInstanceOf(com.labo.anapath.common.exception.InvalidOperationException.class);
+        envoi.getValue().accept(aAppeler);
+        verify(notificationService, never()).callPatient(prevenuId, null);
+        verify(notificationService).callPatient(aAppeler, null);
     }
 }

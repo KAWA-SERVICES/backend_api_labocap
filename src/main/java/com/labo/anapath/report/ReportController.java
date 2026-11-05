@@ -238,6 +238,19 @@ public class ReportController {
     }
 
     /**
+     * Sauvegarde automatique du texte en cours de saisie (compte-rendu en
+     * attente, jamais signé). Corps : celui de {@code PUT /{id}}, dont seuls les
+     * champs de texte sont lus. 422 si le compte-rendu est validé ou signé.
+     */
+    @PatchMapping("/{id}/brouillon")
+    @PreAuthorize("hasAuthority('edit-reports')")
+    public ResponseEntity<ApiResponse<Void>> enregistrerBrouillon(
+            @PathVariable UUID id, @Valid @RequestBody ReportRequestDto dto) {
+        reportService.enregistrerBrouillon(id, dto);
+        return ResponseEntity.ok(ApiResponse.success("Brouillon enregistré", null));
+    }
+
+    /**
      * Supprime (soft delete) un compte-rendu.
      *
      * @param id identifiant UUID du CR à supprimer

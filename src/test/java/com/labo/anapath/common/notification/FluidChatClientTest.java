@@ -59,8 +59,8 @@ class FluidChatClientTest {
                 .andExpect(jsonPath("$.name").value("26-0042"))
                 .andRespond(withSuccess(appel(), MediaType.APPLICATION_JSON));
 
-        client.lancer("+22997000001", LIEN, PLAGE, "26-0001", "26-0042");
-        client.lancer("+22997000002", LIEN, PLAGE, "26-0002", " 26-0042 ");
+        client.lancer("+22997000001", LIEN, PLAGE, "26-0001", "26-0042", null, null);
+        client.lancer("+22997000002", LIEN, PLAGE, "26-0002", " 26-0042 ", null, null);
 
         serveur.verify();
     }
@@ -79,8 +79,8 @@ class FluidChatClientTest {
                 .andExpect(jsonPath("$.name").doesNotExist())
                 .andRespond(withSuccess(appel(), MediaType.APPLICATION_JSON));
 
-        client.bip("+22997000001", "custom/9", PLAGE, "BIP-FA260001", "26-0042");
-        client.bip("+22997000001", null, PLAGE, "BIP-FA260001", " ");
+        client.bip("+22997000001", "custom/9", PLAGE, "BIP-FA260001", "26-0042", null, null);
+        client.bip("+22997000001", null, PLAGE, "BIP-FA260001", " ", null, null);
 
         serveur.verify();
     }
@@ -125,7 +125,7 @@ class FluidChatClientTest {
                 .andRespond(withStatus(HttpStatus.PAYMENT_REQUIRED).contentType(MediaType.APPLICATION_JSON)
                         .body("{\"error\":{\"code\":\"SUBSCRIPTION\",\"message\":\"abonnement suspendu\"}}"));
 
-        assertThatThrownBy(() -> client.lancer("+2290197000001", "custom/2", PLAGE, "26-1", "26-1"))
+        assertThatThrownBy(() -> client.lancer("+2290197000001", "custom/2", PLAGE, "26-1", "26-1", null, null))
                 .isInstanceOf(ExternalApiException.class)
                 .hasMessageContaining("Abonnement FluidChat suspendu");
     }
@@ -193,5 +193,58 @@ class FluidChatClientTest {
 
         assertThat(client.mouvements(null)).isEmpty();
         serveur.verify();
+    }
+
+    @Test
+    @DisplayName("fallback_to et idempotency_key transmis ; absents quand nuls")
+    void secoursEtCle() {
+        serveur.expect(requestTo(BASE + "/v1/api/calls"))
+                .andExpect(jsonPath("$.fallback_to").value("+2290166000002"))
+                .andExpect(jsonPath("$.idempotency_key").value("rappel-abc"))
+                .andRespond(withSuccess(appel(), MediaType.APPLICATION_JSON));
+        serveur.expect(requestTo(BASE + "/v1/api/calls"))
+                .andExpect(jsonPath("$.bip").value(true))
+                .andExpect(jsonPath("$.fallback_to").doesNotExist())
+                .andExpect(jsonPath("$.idempotency_key").value("bip-abc"))
+                .andRespond(withSuccess(appel(), MediaType.APPLICATION_JSON));
+
+        client.lancer("+2290197000001", "custom/2", PLAGE, "26-1", "26-1", "+2290166000002", "rappel-abc");
+        client.bip("+2290197000001", null, PLAGE, "BIP-1", null, null, "bip-abc");
+
+        serveur.verify();
+    }
+
+    @Test
+    @DisplayName("502, 503, 504 et erreur réseau : FluidChat indisponible, demande à renvoyer")
+    void indisponible() {
+        for (HttpStatus statut : java.util.List.of(HttpStatus.BAD_GATEWAY, HttpStatus.SERVICE_UNAVAILABLE,
+                HttpStatus.GATEWAY_TIMEOUT)) {
+            serveur.expect(requestTo(BASE + "/v1/api/calls")).andRespond(withStatus(statut));
+        }
+        serveur.expect(requestTo(BASE + "/v1/api/sms"))
+                .andRespond(org.springframework.test.web.client.response.MockRestResponseCreators
+                        .withException(new java.net.SocketTimeoutException("Read timed out")));
+
+        for (int i = 0; i < 3; i++) {
+            assertThatThrownBy(() -> client.lancer("+2290197000001", "custom/2", PLAGE, "26-1", "26-1", null, "k"))
+                    .isInstanceOf(FluidChatIndisponibleException.class);
+        }
+        assertThatThrownBy(() -> client.envoyerSms("2290197000001", "t", "ref-000000000000", null))
+                .isInstanceOf(FluidChatIndisponibleException.class);
+    }
+
+    @Test
+    @DisplayName("500, 402 et 4xx ne sont pas des pannes passagères : jamais renvoyés")
+    void refusNonRenvoyes() {
+        serveur.expect(requestTo(BASE + "/v1/api/calls")).andRespond(withStatus(HttpStatus.INTERNAL_SERVER_ERROR));
+        serveur.expect(requestTo(BASE + "/v1/api/calls"))
+                .andRespond(withStatus(HttpStatus.UNPROCESSABLE_CONTENT).contentType(MediaType.APPLICATION_JSON)
+                        .body("{\"error\":{\"code\":\"VALIDATION\",\"message\":\"numéro invalide\"}}"));
+
+        assertThatThrownBy(() -> client.lancer("+2290197000001", "custom/2", PLAGE, "26-1", "26-1", null, "k"))
+                .isInstanceOf(ExternalApiException.class)
+                .isNotInstanceOf(FluidChatIndisponibleException.class);
+        assertThatThrownBy(() -> client.lancer("+2290197000001", "custom/2", PLAGE, "26-1", "26-1", null, "k"))
+                .isInstanceOf(InvalidOperationException.class);
     }
 }

@@ -2,7 +2,10 @@ package com.labo.anapath.report;
 
 import com.labo.anapath.common.Discipline;
 import com.labo.anapath.common.exception.InvalidOperationException;
+import com.labo.anapath.common.notification.DemandeFluidChat;
+import com.labo.anapath.common.notification.DemandesEnAttente;
 import com.labo.anapath.common.notification.FluidChatClient;
+import com.labo.anapath.common.notification.FluidChatIndisponibleException;
 import com.labo.anapath.common.notification.PhoneNumbers;
 import com.labo.anapath.common.notification.SmsSender;
 import com.labo.anapath.common.notification.SmsTemplates;
@@ -43,6 +46,8 @@ public class NotificationServiceImpl implements NotificationService {
     private final ReglagesDeRappel reglagesDeRappel;
     /** SMS : passerelle FluidPay, qui achemine via OurVoice. */
     private final SmsSender smsSender;
+    /** Ce que FluidChat n'a pas reçu, renvoyé avec la même clé. */
+    private final DemandesEnAttente demandes;
 
     /**
      * Met en file chez FluidChat l'appel « votre résultat est disponible ».
@@ -77,9 +82,20 @@ public class NotificationServiceImpl implements NotificationService {
                     "Lien audio de la langue du patient non renseigné (Paramètres › Rappel des patients).");
         }
 
-        FluidChatClient.Appel lance = fluidChatClient.lancer("+" + to, audio,
-                reglagesDeRappel.plage().versCallWindow(), report.getTestOrder().getCode(),
-                report.getTestOrder().getCode());
+        String cle = demandes.cle(DemandeFluidChat.Type.APPEL_RESULTAT, reportId,
+                () -> DemandesEnAttente.nouvelleCle("rappel"));
+        FluidChatClient.Appel lance;
+        try {
+            lance = fluidChatClient.lancer("+" + to, audio,
+                    reglagesDeRappel.plage().versCallWindow(), report.getTestOrder().getCode(),
+                    report.getTestOrder().getCode(), numeroSecondaire(report), cle);
+        } catch (FluidChatIndisponibleException e) {
+            demandes.enregistrer(DemandeFluidChat.Type.APPEL_RESULTAT, reportId, report.getBranchId(), cle,
+                    e.getMessage());
+            throw new FluidChatIndisponibleException(
+                    "FluidChat ne répond pas : l'appel partira automatiquement à son retour.", e);
+        }
+        demandes.resoudre(DemandeFluidChat.Type.APPEL_RESULTAT, reportId);
         String appelId = String.valueOf(lance.id());
 
         report.getTestOrder().setStatusAppel(appelId);
@@ -155,7 +171,8 @@ public class NotificationServiceImpl implements NotificationService {
         //
         // Clé d'idempotence tirée au sort, et non l'identifiant du compte-rendu :
         // ce SMS se renvoie à la demande depuis l'écran de suivi, et une clé stable
-        // ferait écarter la relance comme un doublon.
+        // ferait écarter la relance comme un doublon. Sauf si un envoi précédent
+        // attend le retour de FluidChat : on reprend sa clé, pour qu'il ne parte qu'une fois.
         //
         // Le texte suit la discipline : celui d'anatomie pathologique nomme le
         // cabinet d'anatomie pathologique, la biologie a le sien. Le chemin
@@ -163,8 +180,18 @@ public class NotificationServiceImpl implements NotificationService {
         String texte = report.getDiscipline() == Discipline.BIOLOGY
                 ? smsTemplates.smsResultatBiologie(report.getBranchId())
                 : smsTemplates.smsResultat(report.getBranchId());
-        smsSender.envoyer(to, texte, SmsSender.SOURCE_RESULTAT, UUID.randomUUID(),
-                report.getTestOrder().getCode());
+        String cle = demandes.cle(DemandeFluidChat.Type.SMS_RESULTAT, reportId,
+                () -> UUID.randomUUID().toString());
+        try {
+            smsSender.envoyer(to, texte, SmsSender.SOURCE_RESULTAT, UUID.fromString(cle),
+                    report.getTestOrder().getCode());
+        } catch (FluidChatIndisponibleException e) {
+            demandes.enregistrer(DemandeFluidChat.Type.SMS_RESULTAT, reportId, report.getBranchId(), cle,
+                    e.getMessage());
+            throw new FluidChatIndisponibleException(
+                    "FluidChat ne répond pas : le SMS partira automatiquement à son retour.", e);
+        }
+        demandes.resoudre(DemandeFluidChat.Type.SMS_RESULTAT, reportId);
 
         // L'avis est parti : la tâche de rappel n'a plus à s'en occuper.
         report.setPatientNotifiedAt(LocalDateTime.now());
@@ -261,6 +288,13 @@ public class NotificationServiceImpl implements NotificationService {
             telephone = patient.getTelephone2();
         }
         return PhoneNumbers.toInternational(telephone);
+    }
+
+    /** Téléphone 2 au format {@code +229…}, à appeler si le téléphone 1 ne répond pas ; sinon nul. */
+    private static String numeroSecondaire(Report report) {
+        var patient = report.getTestOrder().getPatient();
+        String secondaire = PhoneNumbers.secondaire(patient.getTelephone1(), patient.getTelephone2());
+        return secondaire == null ? null : "+" + secondaire;
     }
 
     private void logAction(UUID reportId, String action, UUID userId, UUID branchId) {

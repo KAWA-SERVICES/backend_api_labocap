@@ -79,6 +79,12 @@ public interface ReportService {
 
     ReportResponseDto update(UUID id, ReportRequestDto dto, UUID userId, UUID branchId);
 
+    /**
+     * Sauvegarde automatique du texte d'un compte-rendu en cours de saisie
+     * (comme le brouillon d'un courriel). Seuls les champs de texte sont lus.
+     */
+    void enregistrerBrouillon(UUID id, ReportRequestDto dto);
+
     void delete(UUID id);
 
     ReportResponseDto validate(UUID id, UUID userId);

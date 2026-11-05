@@ -3,7 +3,10 @@ package com.labo.anapath.report;
 import com.labo.anapath.common.exception.ExternalApiException;
 import com.labo.anapath.common.exception.InvalidOperationException;
 import com.labo.anapath.common.exception.ResourceNotFoundException;
+import com.labo.anapath.common.notification.DemandeFluidChat;
+import com.labo.anapath.common.notification.DemandesEnAttente;
 import com.labo.anapath.common.notification.FluidChatClient;
+import com.labo.anapath.common.notification.FluidChatIndisponibleException;
 import com.labo.anapath.common.notification.SmsSender;
 import com.labo.anapath.common.notification.SmsTemplates;
 import com.labo.anapath.patient.Patient;
@@ -28,6 +31,7 @@ import java.util.UUID;
 import java.time.LocalDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -52,6 +56,7 @@ class NotificationServiceImplTest {
     @Mock private ReglagesDeRappel reglagesDeRappel;
     @Mock private SmsSender smsSender;
     @Mock private SmsTemplates smsTemplates;
+    @Mock private DemandesEnAttente demandes;
 
     @InjectMocks
     private NotificationServiceImpl service;
@@ -65,7 +70,9 @@ class NotificationServiceImplTest {
         when(reglagesDeRappel.audio(any())).thenReturn("custom/2");
         when(reglagesDeRappel.plage()).thenReturn(ReglagesDeRappel.Plage.REGLEMENTAIRE);
         when(userRepository.findById(USER_ID)).thenReturn(Optional.empty());
-        when(fluidChatClient.lancer(anyString(), anyString(), any(), any(), any()))
+        when(demandes.cle(any(), any(), any()))
+                .thenAnswer(i -> ((java.util.function.Supplier<String>) i.getArgument(2)).get());
+        when(fluidChatClient.lancer(anyString(), anyString(), any(), any(), any(), any(), any()))
                 .thenReturn(new FluidChatClient.Appel(57, "queued", null, 0, 0));
     }
 
@@ -96,8 +103,77 @@ class NotificationServiceImplTest {
 
         verify(reglagesDeRappel).audio("fon");
         verify(fluidChatClient).lancer(eq("+2290197000001"), eq("custom/2"),
-                eq(ReglagesDeRappel.Plage.REGLEMENTAIRE.versCallWindow()), eq("26-4099"), eq("26-4099"));
+                eq(ReglagesDeRappel.Plage.REGLEMENTAIRE.versCallWindow()), eq("26-4099"), eq("26-4099"), any(), any());
         assertThat(result.appelId()).isEqualTo("57");
+    }
+
+    @Test
+    @DisplayName("callPatient : deux numéros différents → le téléphone 2 part en fallback_to ; clé neuve rappel-…, demande résolue")
+    void callPatient_numeroSecondaireEtCle() {
+        report("97000001", "0166000002");
+
+        service.callPatient(REPORT_ID, USER_ID);
+
+        ArgumentCaptor<String> cle = ArgumentCaptor.forClass(String.class);
+        verify(fluidChatClient).lancer(eq("+2290197000001"), any(), any(), any(), any(),
+                eq("+2290166000002"), cle.capture());
+        assertThat(cle.getValue()).matches("rappel-[0-9a-f]{32}");
+        verify(demandes).resoudre(DemandeFluidChat.Type.APPEL_RESULTAT, REPORT_ID);
+    }
+
+    @Test
+    @DisplayName("callPatient : même numéro deux fois saisi → pas de fallback_to")
+    void callPatient_memeNumero_pasDeSecours() {
+        report("97000001", "+229 01 97 00 00 01");
+
+        service.callPatient(REPORT_ID, USER_ID);
+
+        verify(fluidChatClient).lancer(any(), any(), any(), any(), any(), isNull(), any());
+    }
+
+    @Test
+    @DisplayName("callPatient : FluidChat injoignable → demande gardée avec la clé envoyée, message de renvoi")
+    void callPatient_panne_gardeLaDemande() {
+        report("97000001", null);
+        org.mockito.Mockito.doReturn("rappel-garde").when(demandes).cle(eq(DemandeFluidChat.Type.APPEL_RESULTAT), eq(REPORT_ID), any());
+        when(fluidChatClient.lancer(any(), any(), any(), any(), any(), any(), any()))
+                .thenThrow(new FluidChatIndisponibleException("Service d'appel indisponible", null));
+
+        assertThatThrownBy(() -> service.callPatient(REPORT_ID, USER_ID))
+                .isInstanceOf(FluidChatIndisponibleException.class)
+                .hasMessageContaining("partira automatiquement");
+        verify(fluidChatClient).lancer(any(), any(), any(), any(), any(), any(), eq("rappel-garde"));
+        verify(demandes).enregistrer(eq(DemandeFluidChat.Type.APPEL_RESULTAT), eq(REPORT_ID), any(),
+                eq("rappel-garde"), any());
+        verify(demandes, never()).resoudre(any(), any());
+    }
+
+    @Test
+    @DisplayName("callPatient : refus 4xx → rien n'est gardé, l'erreur remonte telle quelle")
+    void callPatient_refus_pasGarde() {
+        report("97000001", null);
+        when(fluidChatClient.lancer(any(), any(), any(), any(), any(), any(), any()))
+                .thenThrow(new InvalidOperationException("Crédit SMS et appels épuisé"));
+
+        assertThatThrownBy(() -> service.callPatient(REPORT_ID, USER_ID))
+                .isInstanceOf(InvalidOperationException.class);
+        verify(demandes, never()).enregistrer(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("sendSms : FluidChat injoignable → la référence d'envoi est gardée, et reprise au renvoi")
+    void sendSms_panne_gardeLaReference() {
+        report("97000001", null);
+        UUID gardee = UUID.randomUUID();
+        org.mockito.Mockito.doReturn(gardee.toString()).when(demandes).cle(eq(DemandeFluidChat.Type.SMS_RESULTAT), eq(REPORT_ID), any());
+        doThrow(new FluidChatIndisponibleException("Service d'appel indisponible", null))
+                .when(smsSender).envoyer(any(), any(), any(), any(), any());
+
+        assertThatThrownBy(() -> service.sendSms(REPORT_ID, USER_ID))
+                .isInstanceOf(FluidChatIndisponibleException.class);
+        verify(smsSender).envoyer(any(), any(), any(), eq(gardee), any());
+        verify(demandes).enregistrer(eq(DemandeFluidChat.Type.SMS_RESULTAT), eq(REPORT_ID), any(),
+                eq(gardee.toString()), any());
     }
 
     @Test
@@ -125,7 +201,7 @@ class NotificationServiceImplTest {
 
         assertThatThrownBy(() -> service.callPatient(REPORT_ID, USER_ID))
                 .isInstanceOf(InvalidOperationException.class);
-        verify(fluidChatClient, never()).lancer(any(), any(), any(), any(), any());
+        verify(fluidChatClient, never()).lancer(any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -136,7 +212,7 @@ class NotificationServiceImplTest {
 
         assertThatThrownBy(() -> service.callPatient(REPORT_ID, USER_ID))
                 .isInstanceOf(InvalidOperationException.class);
-        verify(fluidChatClient, never()).lancer(any(), any(), any(), any(), any());
+        verify(fluidChatClient, never()).lancer(any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -155,7 +231,7 @@ class NotificationServiceImplTest {
         NotifyResponseDto result = service.notifyPatient(REPORT_ID, USER_ID);
 
         verify(smsSender).envoyer(eq("2290197000001"), any(), eq(SmsSender.SOURCE_RESULTAT), any(), eq("26-4099"));
-        verify(fluidChatClient).lancer(any(), any(), any(), any(), any());
+        verify(fluidChatClient).lancer(any(), any(), any(), any(), any(), any(), any());
         assertThat(result.channel()).isEqualTo("CALL");
         assertThat(result.message()).isEqualTo("SMS envoyé et appel programmé");
     }
@@ -164,7 +240,7 @@ class NotificationServiceImplTest {
     @DisplayName("notifyPatient : FluidChat en panne, le SMS suffit à prévenir")
     void notifyPatient_appelEnEchec_smsSeul() {
         report("97000001", null);
-        when(fluidChatClient.lancer(any(), any(), any(), any(), any())).thenThrow(new ExternalApiException("panne"));
+        when(fluidChatClient.lancer(any(), any(), any(), any(), any(), any(), any())).thenThrow(new ExternalApiException("panne"));
 
         NotifyResponseDto result = service.notifyPatient(REPORT_ID, USER_ID);
 
@@ -175,7 +251,7 @@ class NotificationServiceImplTest {
     @DisplayName("notifyPatient : ni SMS ni appel, l'erreur remonte pour que la tâche réessaie")
     void notifyPatient_toutEnEchec_leve() {
         Report report = report("97000001", null);
-        when(fluidChatClient.lancer(any(), any(), any(), any(), any())).thenThrow(new ExternalApiException("panne"));
+        when(fluidChatClient.lancer(any(), any(), any(), any(), any(), any(), any())).thenThrow(new ExternalApiException("panne"));
         doThrow(new ExternalApiException("sms")).when(smsSender).envoyer(any(), any(), any(), any(), any());
 
         assertThatThrownBy(() -> service.notifyPatient(REPORT_ID, USER_ID))
@@ -190,7 +266,7 @@ class NotificationServiceImplTest {
 
         service.notifyPatient(REPORT_ID, USER_ID);
 
-        verify(fluidChatClient).lancer(eq("+2290166000002"), any(), any(), any(), any());
+        verify(fluidChatClient).lancer(eq("+2290166000002"), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -207,7 +283,7 @@ class NotificationServiceImplTest {
         assertThat(ligne.getValue().getAppelId()).isNull();
         assertThat(report.getPatientNotifiedAt()).isNotNull();
         verify(smsSender, never()).envoyer(any(), any(), any(), any(), any());
-        verify(fluidChatClient, never()).lancer(any(), any(), any(), any(), any());
+        verify(fluidChatClient, never()).lancer(any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test

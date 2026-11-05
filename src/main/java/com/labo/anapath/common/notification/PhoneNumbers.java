@@ -44,6 +44,18 @@ public final class PhoneNumbers {
                 : international;
     }
 
+    /**
+     * Second numéro à essayer ({@code fallback_to} de FluidChat) : le téléphone 2,
+     * quand le téléphone 1 est aussi renseigné et que ce n'est pas le même numéro.
+     *
+     * @return au format de {@link #toInternational}, ou {@code null}
+     */
+    public static String secondaire(String telephone1, String telephone2) {
+        String premier = toInternational(telephone1);
+        String second = toInternational(telephone2);
+        return premier != null && second != null && !premier.equals(second) ? second : null;
+    }
+
     private static String avecIndicatif(String numero) {
         if (numero == null) {
             return null;
