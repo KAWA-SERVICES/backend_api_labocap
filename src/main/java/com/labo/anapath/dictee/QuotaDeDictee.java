@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.UUID;
 
@@ -38,8 +39,7 @@ public class QuotaDeDictee {
     @Transactional
     public UUID reserver(UUID branchId, UUID userId) {
         jdbc.queryForList("SELECT pg_advisory_xact_lock(hashtext(?))", "dictee:" + branchId);
-        BigDecimal consomme = consommations.secondesDepuis(branchId, LocalDate.now().withDayOfMonth(1).atStartOfDay());
-        if (consomme.add(RESERVATION_SECONDES).compareTo(BigDecimal.valueOf(quotaMensuelMinutes * 60)) > 0) {
+        if (consommeCeMois(branchId).add(RESERVATION_SECONDES).compareTo(quotaSecondes()) > 0) {
             throw new InvalidOperationException("DICTEE_QUOTA_ATTEINT");
         }
         return consommations.save(new ConsommationDictee(branchId, userId, RESERVATION_SECONDES)).getId();
@@ -53,6 +53,22 @@ public class QuotaDeDictee {
     @Transactional
     public void ajuster(UUID reservation, BigDecimal secondes) {
         jdbc.update("UPDATE consommation_dictee SET secondes = ? WHERE id = ?", secondes, reservation);
+    }
+
+    /** Minutes entières qui restent à l'agence ce mois-ci (0 au plus bas) ; le front prévient sous un seuil. */
+    public long minutesRestantes(UUID branchId) {
+        long restantes = quotaSecondes().subtract(consommeCeMois(branchId))
+                .divide(BigDecimal.valueOf(60), 0, RoundingMode.FLOOR).longValue();
+        return Math.max(0, restantes);
+    }
+
+    /** Même fenêtre et même unité pour le refus et l'alerte : ils ne peuvent pas se contredire. */
+    private BigDecimal consommeCeMois(UUID branchId) {
+        return consommations.secondesDepuis(branchId, LocalDate.now().withDayOfMonth(1).atStartOfDay());
+    }
+
+    private BigDecimal quotaSecondes() {
+        return BigDecimal.valueOf(quotaMensuelMinutes * 60);
     }
 
     @Transactional
