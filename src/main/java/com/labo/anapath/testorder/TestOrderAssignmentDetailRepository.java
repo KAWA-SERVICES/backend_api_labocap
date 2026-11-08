@@ -33,14 +33,23 @@ public interface TestOrderAssignmentDetailRepository
             LEFT JOIN FETCH a.user
             WHERE d.testOrder.id = :testOrderId
               AND d.deletedAt IS NULL
+              AND a.deletedAt IS NULL
               AND d.remplaceeLe IS NULL
             ORDER BY d.createdAt DESC
             """)
     List<TestOrderAssignmentDetail> affectationsCourantes(@Param("testOrderId") UUID testOrderId);
 
-    /** L'affectation qui vaut aujourd'hui, s'il y en a une. */
+    /**
+     * L'affectation qui vaut aujourd'hui, s'il y en a une : celle du titulaire.
+     *
+     * <p>Une ligne « pour avis » est courante elle aussi, et souvent plus
+     * récente ; la prendre ferait passer le médecin consulté pour celui qui a
+     * le dossier. Elle ne sert qu'à défaut de titulaire.</p>
+     */
     default Optional<TestOrderAssignmentDetail> findByTestOrderId(UUID testOrderId) {
-        return affectationsCourantes(testOrderId).stream().findFirst();
+        List<TestOrderAssignmentDetail> courantes = affectationsCourantes(testOrderId);
+        return courantes.stream().filter(d -> !d.isPourAvis()).findFirst()
+                .or(() -> courantes.stream().findFirst());
     }
 
     /**
@@ -96,6 +105,9 @@ public interface TestOrderAssignmentDetailRepository
                      -- remplacées, quelle que soit la date des lots : un lot
                      -- ancien peut recevoir une demande reprise à un lot récent.
                      (d.remplacee_le IS NULL) DESC,
+                     -- Parmi les courantes, le titulaire avant le médecin
+                     -- consulté pour avis.
+                     d.pour_avis ASC,
                      a.created_at DESC
             """, nativeQuery = true)
     List<Object[]> findAssignedUserNames(@Param("testOrderIds") List<UUID> testOrderIds);

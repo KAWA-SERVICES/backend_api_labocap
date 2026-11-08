@@ -176,7 +176,7 @@ class LotsDeBiologieTest {
             TestOrder bon = bon("EX26-0101", Discipline.BIOLOGY);
             when(assignmentRepository.findByIdAndBranchId(eq(lot.getId()), any())).thenReturn(Optional.of(lot));
             when(testOrderRepository.findByIdAndBranchId(eq(bon.getId()), any())).thenReturn(Optional.of(bon));
-            when(detailRepository.findByTestOrderId(bon.getId())).thenReturn(Optional.empty());
+            when(detailRepository.affectationsCourantes(bon.getId())).thenReturn(List.of());
             AssignmentDetailRequestDto ajout = new AssignmentDetailRequestDto();
             ajout.setTestOrderId(bon.getId());
 

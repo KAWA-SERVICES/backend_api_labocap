@@ -16,6 +16,6 @@ public class ReaffectationNonConfirmeeException extends RuntimeException {
 
     public ReaffectationNonConfirmeeException(String codeDemande, String medecinActuel) {
         super("La demande " + codeDemande + " est actuellement affectée à "
-                + medecinActuel + ". Confirmez la réaffectation pour la lui retirer.");
+                + medecinActuel + ".");
     }
 }

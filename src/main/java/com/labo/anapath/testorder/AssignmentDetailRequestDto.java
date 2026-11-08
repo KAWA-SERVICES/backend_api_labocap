@@ -36,4 +36,15 @@ public class AssignmentDetailRequestDto {
      * déjà dans ce lot.</p>
      */
     private boolean confirmerReaffectation;
+
+    /**
+     * Confier la demande au médecin du lot pour avis, sans la retirer à ceux
+     * qui l'ont.
+     *
+     * <p>Vaut accord : c'est l'autre réponse à la même question que
+     * {@link #confirmerReaffectation}. Sans effet sur une demande affectée à
+     * personne, qui va alors au médecin du lot comme titulaire. L'emporte sur
+     * {@link #confirmerReaffectation} si les deux sont envoyés.</p>
+     */
+    private boolean pourAvis;
 }

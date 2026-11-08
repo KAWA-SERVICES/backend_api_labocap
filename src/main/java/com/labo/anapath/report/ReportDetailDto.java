@@ -106,7 +106,13 @@ public record ReportDetailDto(
          */
         UUID validatedById,
         String validatedByName,
-        String validatedByRole
+        String validatedByRole,
+        /**
+         * Les médecins à qui la demande a été confiée pour avis, nom de
+         * famille en tête. Vide quand il n'y en a pas ; le titulaire, lui, est
+         * {@code assignedToName}.
+         */
+        List<String> medecinsPourAvis
 ) {
     public record LogReportDto(String action, String description, String userName, LocalDateTime createdAt) {}
 }

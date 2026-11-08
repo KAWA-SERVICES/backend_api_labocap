@@ -103,5 +103,7 @@ public record DemandeDuMedecinDto(
         String note,
         String assignmentCode,
         LocalDate assignmentDate,
-        String assignmentNote) {
+        String assignmentNote,
+        /** Vraie quand le dossier a été confié à ce médecin pour avis. */
+        boolean pourAvis) {
 }
