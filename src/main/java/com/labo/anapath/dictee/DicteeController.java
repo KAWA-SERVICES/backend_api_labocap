@@ -39,7 +39,7 @@ public class DicteeController {
     private final ElevenLabsClient elevenLabs;
     private final QuotaDeDictee quota;
 
-    public record DicteeResponse(String texte) {}
+    public record DicteeResponse(String texte, long minutesRestantes) {}
 
     @PostMapping(consumes = "multipart/form-data")
     @PreAuthorize("hasAuthority('edit-reports')")
@@ -64,7 +64,15 @@ public class DicteeController {
             throw e;
         }
         quota.ajuster(reservation, secondes(t, octets.length));
-        return ResponseEntity.ok(ApiResponse.success(new DicteeResponse(t.text().strip())));
+        // Le texte est déjà facturé : un incident sur ce simple indicateur ne doit pas le faire perdre.
+        long restantes;
+        try {
+            restantes = quota.minutesRestantes(principal.getBranchId());
+        } catch (RuntimeException e) {
+            log.warn("Dictée : reste du quota illisible pour l'agence {}", principal.getBranchId(), e);
+            restantes = -1;
+        }
+        return ResponseEntity.ok(ApiResponse.success(new DicteeResponse(t.text().strip(), restantes)));
     }
 
     /**

@@ -158,6 +158,8 @@ class DicteeIT {
 
         assertThat(r.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(r.getBody()).contains("\"texte\":\"Carcinome canalaire infiltrant.\"");
+        // Quota d'une minute, 4,2 s consommées : il reste 55,8 s, soit 0 minute entière.
+        assertThat(r.getBody()).contains("\"minutesRestantes\":0");
         List<ConsommationDictee> lignes = consommations.findAll();
         assertThat(lignes).hasSize(1);
         assertThat(lignes.getFirst().getBranchId()).isEqualTo(AGENCE);
