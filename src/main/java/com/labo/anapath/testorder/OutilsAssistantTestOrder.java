@@ -200,6 +200,7 @@ public class OutilsAssistantTestOrder {
                         m.put("confieeLe", e.confieeLe());
                         m.put("remplaceeLe", e.remplaceeLe());
                         m.put("statutDuMedecin", e.statutDuMedecin());
+                        m.put("pourAvis", e.pourAvis());
                         return m;
                     }).toList();
                     Map<String, Object> d = new LinkedHashMap<>();
@@ -273,9 +274,12 @@ public class OutilsAssistantTestOrder {
     }
 
     private static String medecinEnPlace(TestOrderAssignmentService affectations, UUID demandeId, UUID branchId) {
-        return affectations.historiqueDe(demandeId, branchId).etapes().stream()
+        // Le titulaire, et non le médecin consulté pour avis — souvent plus récent.
+        var courantes = affectations.historiqueDe(demandeId, branchId).etapes().stream()
                 .filter(e -> e.remplaceeLe() == null)
-                .reduce((premier, second) -> second)
+                .toList();
+        return courantes.stream().filter(e -> !e.pourAvis()).reduce((premier, second) -> second)
+                .or(() -> courantes.stream().reduce((premier, second) -> second))
                 .map(e -> e.medecin()).orElse(null);
     }
 

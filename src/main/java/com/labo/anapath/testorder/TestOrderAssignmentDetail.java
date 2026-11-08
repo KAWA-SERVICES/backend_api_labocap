@@ -71,6 +71,16 @@ public class TestOrderAssignmentDetail extends AuditableEntity {
     @Column(name = "remplacee_le")
     private LocalDateTime remplaceeLe;
 
+    /**
+     * Vraie quand le dossier a été confié à ce médecin pour avis.
+     *
+     * <p>La ligne d'avis vaut à côté de celle du titulaire, sans la remplacer :
+     * le premier médecin garde le dossier, le second le reçoit aussi et peut
+     * rédiger le compte rendu. Le titulaire reste celui qu'on affiche.</p>
+     */
+    @Column(name = "pour_avis", nullable = false)
+    private boolean pourAvis;
+
     /** Vraie tant que cette ligne désigne le médecin en charge du dossier. */
     public boolean estCourante() {
         return remplaceeLe == null && getDeletedAt() == null;

@@ -33,4 +33,7 @@ public record AssignmentDetailResponseDto(
          * distinguer : sans cela le lot présenterait comme à traiter un dossier
          * qu'on a confié à quelqu'un d'autre.</p>
          */
-        java.time.LocalDateTime remplaceeLe) {}
+        java.time.LocalDateTime remplaceeLe,
+
+        /** Vraie quand la demande est dans ce lot pour avis. */
+        boolean pourAvis) {}

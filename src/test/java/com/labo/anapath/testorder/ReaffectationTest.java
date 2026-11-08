@@ -109,11 +109,11 @@ class ReaffectationTest {
     }
 
     private void monterLeDecor(TestOrderAssignment nouveauLot,
-                               Optional<TestOrderAssignmentDetail> courante) {
+                               List<TestOrderAssignmentDetail> courantes) {
         when(assignmentRepository.findByIdAndBranchId(eq(nouveauLot.getId()), any()))
                 .thenReturn(Optional.of(nouveauLot));
         when(testOrderRepository.findByIdAndBranchId(eq(DEMANDE), any())).thenReturn(Optional.of(demande()));
-        when(detailRepository.findByTestOrderId(DEMANDE)).thenReturn(courante);
+        when(detailRepository.affectationsCourantes(DEMANDE)).thenReturn(courantes);
         when(detailRepository.save(any())).thenAnswer(i -> i.getArgument(0));
         when(macroRepository.findByTestOrderId(any())).thenReturn(Optional.empty());
         when(macroRepository.save(any())).thenAnswer(i -> i.getArgument(0));
@@ -125,7 +125,7 @@ class ReaffectationTest {
         TestOrder d = demande();
         TestOrderAssignment initial = lot(LOT_INITIAL, "AF26-0001", medecin("HOUNNOU"));
         TestOrderAssignment nouveau = lot(LOT_NOUVEAU, "AF26-0002", medecin("ADECHINA"));
-        monterLeDecor(nouveau, Optional.of(ligne(initial, d)));
+        monterLeDecor(nouveau, List.of(ligne(initial, d)));
 
         assertThatThrownBy(() -> service.addDetail(LOT_NOUVEAU, requete(false)))
                 .isInstanceOf(ReaffectationNonConfirmeeException.class)
@@ -145,7 +145,7 @@ class ReaffectationTest {
         TestOrderAssignment initial = lot(LOT_INITIAL, "AF26-0001", medecin("HOUNNOU"));
         TestOrderAssignment nouveau = lot(LOT_NOUVEAU, "AF26-0002", medecin("ADECHINA"));
         TestOrderAssignmentDetail ancienne = ligne(initial, d);
-        monterLeDecor(nouveau, Optional.of(ancienne));
+        monterLeDecor(nouveau, List.of(ancienne));
 
         service.addDetail(LOT_NOUVEAU, requete(true));
 
@@ -167,7 +167,7 @@ class ReaffectationTest {
     @DisplayName("une demande libre s'affecte sans rien demander")
     void premiereAffectationSansConfirmation() {
         TestOrderAssignment nouveau = lot(LOT_NOUVEAU, "AF26-0002", medecin("ADECHINA"));
-        monterLeDecor(nouveau, Optional.empty());
+        monterLeDecor(nouveau, List.of());
 
         service.addDetail(LOT_NOUVEAU, requete(false));
 
@@ -209,6 +209,164 @@ class ReaffectationTest {
         when(detailRepository.historiqueDe(DEMANDE)).thenReturn(List.of());
 
         assertThat(service.historiqueDe(DEMANDE, BRANCHE).etapes()).isEmpty();
+    }
+
+    // ── Affectation pour avis ─────────────────────────────────────────────
+
+    private AssignmentDetailRequestDto pourAvis() {
+        AssignmentDetailRequestDto dto = requete(false);
+        dto.setPourAvis(true);
+        return dto;
+    }
+
+    /** La ligne créée par l'appel : la dernière enregistrée. */
+    private TestOrderAssignmentDetail derniereEnregistree(int enregistrements) {
+        var captees = org.mockito.ArgumentCaptor.forClass(TestOrderAssignmentDetail.class);
+        verify(detailRepository, org.mockito.Mockito.times(enregistrements)).save(captees.capture());
+        return captees.getAllValues().get(enregistrements - 1);
+    }
+
+    @Test
+    @DisplayName("pour avis, le titulaire garde le dossier et le second médecin le reçoit aussi")
+    void pourAvisGardeLeTitulaire() {
+        TestOrder d = demande();
+        TestOrderAssignmentDetail titulaire = ligne(lot(LOT_INITIAL, "AF26-0001", medecin("HOUNNOU")), d);
+        TestOrderAssignment nouveau = lot(LOT_NOUVEAU, "AF26-0002", medecin("ADECHINA"));
+        monterLeDecor(nouveau, List.of(titulaire));
+
+        var reponse = service.addDetail(LOT_NOUVEAU, pourAvis());
+
+        assertThat(titulaire.estCourante()).isTrue();
+        TestOrderAssignmentDetail avis = derniereEnregistree(1);
+        assertThat(avis.isPourAvis()).isTrue();
+        assertThat(avis.getTestOrderAssignment()).isSameAs(nouveau);
+        assertThat(reponse.pourAvis()).isTrue();
+    }
+
+    @Test
+    @DisplayName("on ne demande pas l'avis d'un médecin qui a déjà le dossier")
+    void pourAvisRefuseLeMedecinEnPlace() {
+        TestOrder d = demande();
+        User hounnou = medecin("HOUNNOU");
+        TestOrderAssignmentDetail titulaire = ligne(lot(LOT_INITIAL, "AF26-0001", hounnou), d);
+        // Un autre lot du même médecin : la demande y serait en double.
+        monterLeDecor(lot(LOT_NOUVEAU, "AF26-0002", hounnou), List.of(titulaire));
+
+        assertThatThrownBy(() -> service.addDetail(LOT_NOUVEAU, pourAvis()))
+                .isInstanceOf(com.labo.anapath.common.exception.BusinessException.class)
+                .hasMessageContaining("HOUNNOU")
+                .hasMessageContaining("26-0155");
+        verify(detailRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("réaffecter retire le titulaire, pas les médecins consultés pour avis")
+    void reaffecterGardeLesAvis() {
+        TestOrder d = demande();
+        TestOrderAssignmentDetail titulaire = ligne(lot(LOT_INITIAL, "AF26-0001", medecin("HOUNNOU")), d);
+        TestOrderAssignmentDetail avis = ligne(lot(UUID.randomUUID(), "AF26-0003", medecin("MENSAH")), d);
+        avis.setPourAvis(true);
+        monterLeDecor(lot(LOT_NOUVEAU, "AF26-0002", medecin("ADECHINA")), List.of(titulaire, avis));
+
+        service.addDetail(LOT_NOUVEAU, requete(true));
+
+        assertThat(titulaire.estCourante()).isFalse();
+        assertThat(avis.estCourante()).isTrue();
+        assertThat(derniereEnregistree(2).isPourAvis()).isFalse();
+    }
+
+    @Test
+    @DisplayName("réaffecter au médecin consulté pour avis en fait le titulaire, sans double ligne")
+    void reaffecterAuMedecinDAvis() {
+        TestOrder d = demande();
+        User mensah = medecin("MENSAH");
+        TestOrderAssignmentDetail titulaire = ligne(lot(LOT_INITIAL, "AF26-0001", medecin("HOUNNOU")), d);
+        TestOrderAssignmentDetail avis = ligne(lot(UUID.randomUUID(), "AF26-0003", mensah), d);
+        avis.setPourAvis(true);
+        monterLeDecor(lot(LOT_NOUVEAU, "AF26-0002", mensah), List.of(titulaire, avis));
+
+        service.addDetail(LOT_NOUVEAU, requete(true));
+
+        assertThat(titulaire.estCourante()).isFalse();
+        assertThat(avis.estCourante()).isFalse();
+        assertThat(derniereEnregistree(3).isPourAvis()).isFalse();
+    }
+
+    @Test
+    @DisplayName("reverser la demande dans le lot du médecin d'avis pose la question, au lieu de répondre « déjà là »")
+    void promotionDansLeLotDAvisDemandeConfirmation() {
+        TestOrder d = demande();
+        User mensah = medecin("MENSAH");
+        TestOrderAssignment lotDAvis = lot(LOT_NOUVEAU, "AF26-0002", mensah);
+        TestOrderAssignmentDetail titulaire = ligne(lot(LOT_INITIAL, "AF26-0001", medecin("HOUNNOU")), d);
+        TestOrderAssignmentDetail avis = ligne(lotDAvis, d);
+        avis.setPourAvis(true);
+        monterLeDecor(lotDAvis, List.of(avis, titulaire));
+
+        assertThatThrownBy(() -> service.addDetail(LOT_NOUVEAU, requete(false)))
+                .isInstanceOf(ReaffectationNonConfirmeeException.class)
+                .hasMessageContaining("HOUNNOU");
+    }
+
+    @Test
+    @DisplayName("confirmée dans le lot du médecin d'avis, la réaffectation en fait le titulaire")
+    void promotionDansLeLotDAvis() {
+        TestOrder d = demande();
+        User mensah = medecin("MENSAH");
+        TestOrderAssignment lotDAvis = lot(LOT_NOUVEAU, "AF26-0002", mensah);
+        TestOrderAssignmentDetail titulaire = ligne(lot(LOT_INITIAL, "AF26-0001", medecin("HOUNNOU")), d);
+        TestOrderAssignmentDetail avis = ligne(lotDAvis, d);
+        avis.setPourAvis(true);
+        monterLeDecor(lotDAvis, List.of(avis, titulaire));
+
+        service.addDetail(LOT_NOUVEAU, requete(true));
+
+        assertThat(titulaire.estCourante()).isFalse();
+        assertThat(avis.estCourante()).isFalse();
+        TestOrderAssignmentDetail nouvelle = derniereEnregistree(3);
+        assertThat(nouvelle.isPourAvis()).isFalse();
+        assertThat(nouvelle.getTestOrderAssignment()).isSameAs(lotDAvis);
+    }
+
+    @Test
+    @DisplayName("sans réponse, le refus nomme le titulaire et non le médecin consulté")
+    void refusNommeLeTitulaire() {
+        TestOrder d = demande();
+        TestOrderAssignmentDetail avis = ligne(lot(UUID.randomUUID(), "AF26-0003", medecin("MENSAH")), d);
+        avis.setPourAvis(true);
+        TestOrderAssignmentDetail titulaire = ligne(lot(LOT_INITIAL, "AF26-0001", medecin("HOUNNOU")), d);
+        // La requête rend la plus récente d'abord : l'avis passe devant.
+        monterLeDecor(lot(LOT_NOUVEAU, "AF26-0002", medecin("ADECHINA")), List.of(avis, titulaire));
+
+        assertThatThrownBy(() -> service.addDetail(LOT_NOUVEAU, requete(false)))
+                .isInstanceOf(ReaffectationNonConfirmeeException.class)
+                .hasMessageContaining("HOUNNOU")
+                .hasMessageNotContaining("MENSAH");
+    }
+
+    @Test
+    @DisplayName("pour avis sur une demande libre : le médecin du lot en devient titulaire")
+    void pourAvisSurDemandeLibre() {
+        monterLeDecor(lot(LOT_NOUVEAU, "AF26-0002", medecin("ADECHINA")), List.of());
+
+        service.addDetail(LOT_NOUVEAU, pourAvis());
+
+        assertThat(derniereEnregistree(1).isPourAvis()).isFalse();
+    }
+
+    @Test
+    @DisplayName("l'affectation qui vaut est celle du titulaire, même quand un avis est plus récent")
+    void lAffectationQuiVautEstCelleDuTitulaire() {
+        TestOrder d = demande();
+        TestOrderAssignmentDetail avis = ligne(lot(UUID.randomUUID(), "AF26-0003", medecin("MENSAH")), d);
+        avis.setPourAvis(true);
+        TestOrderAssignmentDetail titulaire = ligne(lot(LOT_INITIAL, "AF26-0001", medecin("HOUNNOU")), d);
+        TestOrderAssignmentDetailRepository depot =
+                org.mockito.Mockito.mock(TestOrderAssignmentDetailRepository.class);
+        when(depot.affectationsCourantes(DEMANDE)).thenReturn(List.of(avis, titulaire));
+        when(depot.findByTestOrderId(DEMANDE)).thenCallRealMethod();
+
+        assertThat(depot.findByTestOrderId(DEMANDE)).containsSame(titulaire);
     }
 
     /** Une macro est créée à chaque affectation ; le test ne s'y intéresse pas. */

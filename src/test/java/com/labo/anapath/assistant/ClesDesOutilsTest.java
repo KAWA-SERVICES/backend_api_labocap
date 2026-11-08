@@ -28,7 +28,7 @@ class ClesDesOutilsTest {
             "statut", "statutDuMedecin", "statutCompteRendu", "typeExamen", "urgent", "urgents",
             "total", "affiches", "totalDemandes", "totalFacture", "totalPaye", "resteAPayer", "payee",
             "factureNormalisee", "modePaiement", "totalEncaisse", "echeance", "date", "annee", "dateLot", "lot", "rang", "raison",
-            "creeLe", "recueLe", "prelevementDate", "signeLe", "remis", "remisLe", "remplaceeLe", "confieeLe",
+            "creeLe", "recueLe", "prelevementDate", "signeLe", "remis", "remisLe", "remplaceeLe", "confieeLe", "pourAvis",
             "patientPrevenu", "ouvert", "affectee", "genre", "hopital", "avancement", "enregistre",
             "aTraiter", "enCours", "enRelecture", "termines", "terminees", "enRetard", "anneesPrecedentes",
             "demandes", "factures", "comptesRendus", "affectations", "naviguer");

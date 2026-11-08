@@ -7,6 +7,8 @@ import com.labo.anapath.common.exception.ResourceNotFoundException;
 import com.labo.anapath.common.security.UserPrincipal;
 import com.labo.anapath.setting.SettingReportTemplate;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Size;
+import jakarta.validation.constraints.NotBlank;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -201,8 +203,14 @@ public class ReportController {
                 reportService.findDetailByTestOrderCode(code, principal.getBranchId())));
     }
 
+    /**
+     * Le détail d'un compte rendu. Ouvert aussi à {@code edit-reports} : lire ce
+     * qu'on a le droit de réécrire n'ouvre rien de neuf (même garde que
+     * {@code modifications-apres-signature}), et le laborantin le lit depuis
+     * l'application mobile pour compléter la macroscopie.
+     */
     @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority('view-reports')")
+    @PreAuthorize("hasAnyAuthority('view-reports', 'edit-reports')")
     public ResponseEntity<ApiResponse<ReportDetailDto>> findById(
             @PathVariable UUID id,
             @AuthenticationPrincipal UserPrincipal principal) {
@@ -248,6 +256,22 @@ public class ReportController {
             @PathVariable UUID id, @Valid @RequestBody ReportRequestDto dto) {
         reportService.enregistrerBrouillon(id, dto);
         return ResponseEntity.ok(ApiResponse.success("Brouillon enregistré", null));
+    }
+
+    /** Passage dicté à ajouter à la macroscopie : texte brut, une ligne par paragraphe. */
+    public record MacroscopieDto(@NotBlank @Size(max = 50_000) String texte) {}
+
+    /**
+     * Ajoute un passage à la fin de la macroscopie (application mobile du
+     * laborantin). N'écrase rien ; 422 si le compte rendu est validé ou signé.
+     */
+    @PostMapping("/{id}/macroscopie")
+    @PreAuthorize("hasAuthority('edit-reports')")
+    public ResponseEntity<ApiResponse<Void>> ajouterALaMacroscopie(
+            @PathVariable UUID id, @Valid @RequestBody MacroscopieDto dto,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        reportService.ajouterALaMacroscopie(id, dto.texte(), principal.getId());
+        return ResponseEntity.ok(ApiResponse.success("Macroscopie complétée", null));
     }
 
     /**

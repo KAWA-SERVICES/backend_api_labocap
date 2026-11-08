@@ -68,6 +68,8 @@ public record ReportDetailDto(
          * question qu'on pose quand un dossier tarde.</p>
          */
         String assignedToName,
+        /** Le compte à qui le lot a été confié : l'application mobile n'offre la validation qu'à lui. */
+        UUID assignedToId,
         String assignmentCode,
         java.time.LocalDate assignmentDate,
         /**
@@ -106,7 +108,13 @@ public record ReportDetailDto(
          */
         UUID validatedById,
         String validatedByName,
-        String validatedByRole
+        String validatedByRole,
+        /**
+         * Les médecins à qui la demande a été confiée pour avis, nom de
+         * famille en tête. Vide quand il n'y en a pas ; le titulaire, lui, est
+         * {@code assignedToName}.
+         */
+        List<String> medecinsPourAvis
 ) {
     public record LogReportDto(String action, String description, String userName, LocalDateTime createdAt) {}
 }
