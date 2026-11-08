@@ -24,6 +24,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.util.HtmlUtils;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -228,7 +229,7 @@ public class ReportServiceImpl implements ReportService {
                 report.getTags().stream().map(Tag::getName).toList(),
                 report.getTags().stream().map(Tag::getId).toList(),
                 logDtos,
-                affectation.nom(), affectation.code(), affectation.date(),
+                affectation.nom(), affectation.id(), affectation.code(), affectation.date(),
                 affectation.etiquettes(), affectation.note(), affectation.noteDuLot(),
                 report.getCreatedAt(), report.getUpdatedAt(),
                 report.getDiscipline(),
@@ -263,11 +264,11 @@ public class ReportServiceImpl implements ReportService {
      * entier. Les deux notes sont distinctes et le restent : l'une vise un
      * dossier, l'autre une série.</p>
      */
-    private record Affectation(String nom, String code, java.time.LocalDate date,
+    private record Affectation(String nom, UUID id, String code, java.time.LocalDate date,
                                java.util.List<String> etiquettes,
                                String note, String noteDuLot) {
         static final Affectation AUCUNE =
-                new Affectation(null, null, null, java.util.List.of(), null, null);
+                new Affectation(null, null, null, null, java.util.List.of(), null, null);
     }
 
     /**
@@ -287,6 +288,7 @@ public class ReportServiceImpl implements ReportService {
                             a.getUser() == null ? null
                                     : NomComplet.de(a.getUser().getLastname(),
                                                     a.getUser().getFirstname()),
+                            a.getUser() == null ? null : a.getUser().getId(),
                             a.getCode(),
                             a.getDate(),
                             com.labo.anapath.testorder.Etiquettes.decoder(
@@ -785,6 +787,39 @@ public class ReportServiceImpl implements ReportService {
                 dto.getDescriptionSupplementaireMicro() != null ? dto.getDescriptionSupplementaireMicro() : "");
         report.setReceiverName(dto.getReceiverName());
         reportRepository.save(report);
+    }
+
+    /**
+     * Ajoute un passage dicté à la fin de la macroscopie, depuis le mobile.
+     *
+     * <p>Ajouter, jamais remplacer : le web écrit du HTML mis en forme
+     * (modèles, tableaux), que le téléphone ne lit qu'aplati. Réécrire depuis
+     * ce texte aplati détruirait la mise en forme, et écraserait ce qu'un
+     * collègue a saisi sans que le téléphone l'ait vu. Le texte est échappé :
+     * c'est de la parole transcrite, pas du balisage.</p>
+     *
+     * <p>Même garde que le brouillon : un compte rendu validé ou signé ne se
+     * retouche que par « Mettre à jour », qui en garde la version.</p>
+     */
+    @Override
+    @Transactional
+    public void ajouterALaMacroscopie(UUID id, String texte, UUID userId) {
+        Report report = charger(id);
+        exigerAnatomiePathologique(report);
+        if (report.getStatus() != ReportStatus.DRAFT || report.getSignatureDate() != null) {
+            throw new InvalidOperationException(
+                    "Ce compte rendu est validé ou signé : la macroscopie ne se complète plus depuis le téléphone.");
+        }
+        StringBuilder ajout = new StringBuilder();
+        texte.strip().lines().map(String::strip).filter(l -> !l.isEmpty())
+                .forEach(l -> ajout.append("<p>").append(HtmlUtils.htmlEscape(l)).append("</p>"));
+        String avant = report.getContent() == null ? "" : report.getContent();
+        report.setContent(avant + ajout);
+        // ponytail: l'autosauvegarde web (PATCH /brouillon, toutes les 15 s) réécrit tout
+        // le contenu ; un médecin qui tape au même moment écrase cet ajout. Plafond : saisie
+        // simultanée web + mobile. Au-delà : 409 sur updatedAt dans brouillon et update.
+        reportRepository.save(report);
+        logAction(id, "Macroscopie complétée (mobile)", userId);
     }
 
     /** Libellé de l'action portée au journal ; sert aussi de critère de relecture. */

@@ -68,6 +68,8 @@ public record ReportDetailDto(
          * question qu'on pose quand un dossier tarde.</p>
          */
         String assignedToName,
+        /** Le compte à qui le lot a été confié : l'application mobile n'offre la validation qu'à lui. */
+        UUID assignedToId,
         String assignmentCode,
         java.time.LocalDate assignmentDate,
         /**
