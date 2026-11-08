@@ -85,6 +85,9 @@ public interface ReportService {
      */
     void enregistrerBrouillon(UUID id, ReportRequestDto dto);
 
+    /** Ajoute un passage (texte brut, échappé) à la fin de la macroscopie d'un compte rendu en attente. */
+    void ajouterALaMacroscopie(UUID id, String texte, UUID userId);
+
     void delete(UUID id);
 
     ReportResponseDto validate(UUID id, UUID userId);
