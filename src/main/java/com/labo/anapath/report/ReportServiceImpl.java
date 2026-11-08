@@ -789,6 +789,9 @@ public class ReportServiceImpl implements ReportService {
         reportRepository.save(report);
     }
 
+    /** Plafond du contenu macroscopique complété depuis le mobile (caractères). */
+    static final int MACROSCOPIE_MAX = 200_000;
+
     /**
      * Ajoute un passage dicté à la fin de la macroscopie, depuis le mobile.
      *
@@ -814,6 +817,11 @@ public class ReportServiceImpl implements ReportService {
         texte.strip().lines().map(String::strip).filter(l -> !l.isEmpty())
                 .forEach(l -> ajout.append("<p>").append(HtmlUtils.htmlEscape(l)).append("</p>"));
         String avant = report.getContent() == null ? "" : report.getContent();
+        // Un ajout répété sans fin gonflerait le compte rendu (et son PDF).
+        if (avant.length() + ajout.length() > MACROSCOPIE_MAX) {
+            throw new InvalidOperationException(
+                    "La macroscopie est trop longue pour être complétée depuis le téléphone.");
+        }
         report.setContent(avant + ajout);
         // ponytail: l'autosauvegarde web (PATCH /brouillon, toutes les 15 s) réécrit tout
         // le contenu ; un médecin qui tape au même moment écrase cet ajout. Plafond : saisie

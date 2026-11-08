@@ -264,6 +264,17 @@ class CompteRenduMobileIT {
     }
 
     @Test
+    @DisplayName("Au-delà du plafond cumulé → 422, contenu intact")
+    void macroscopie_auDelaDuPlafond_refuse() {
+        Report r = compteRendu(AGENCE, ReportStatus.DRAFT);
+        String long_ = "x".repeat(ReportServiceImpl.MACROSCOPIE_MAX);
+        r.setContent(long_);
+        reportRepository.save(r);
+        assertThat(ajouter(r, LABO, "Fragment").getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
+        assertThat(reportRepository.findById(r.getId()).orElseThrow().getContent()).isEqualTo(long_);
+    }
+
+    @Test
     @DisplayName("Texte vide → 400")
     void macroscopie_vide_refuse() {
         Report r = compteRendu(AGENCE, ReportStatus.DRAFT);
