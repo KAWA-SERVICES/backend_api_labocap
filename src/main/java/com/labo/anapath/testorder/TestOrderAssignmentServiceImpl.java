@@ -102,16 +102,24 @@ public class TestOrderAssignmentServiceImpl implements TestOrderAssignmentServic
                 .orElseThrow(() -> new ResourceNotFoundException("Bon d'examen", dto.getTestOrderId()));
         exigerLaDisciplineDuLot(assignment, order);
 
-        Optional<TestOrderAssignmentDetail> courante =
-                detailRepository.findByTestOrderId(dto.getTestOrderId());
-        boolean memeLot = courante
-                .map(c -> c.getTestOrderAssignment() != null
+        // Toutes les lignes qui valent : le titulaire, et les médecins
+        // consultés pour avis s'il y en a.
+        List<TestOrderAssignmentDetail> courantes =
+                detailRepository.affectationsCourantes(dto.getTestOrderId());
+        Optional<TestOrderAssignmentDetail> dansCeLot = courantes.stream()
+                .filter(c -> c.getTestOrderAssignment() != null
                         && assignmentId.equals(c.getTestOrderAssignment().getId()))
-                .orElse(false);
+                .findFirst();
+        // Le médecin de ce lot n'a la demande que pour avis, et on la lui
+        // confie sans dire « pour avis » : c'est l'en faire titulaire. Cela se
+        // décide comme toute réaffectation, au lieu de répondre « déjà là ».
+        boolean promotion = dansCeLot.map(TestOrderAssignmentDetail::isPourAvis).orElse(false)
+                && !dto.isPourAvis()
+                && courantes.stream().anyMatch(c -> !c.isPourAvis());
 
         TestOrderAssignmentDetail detail;
-        if (memeLot) {
-            detail = courante.get();
+        if (dansCeLot.isPresent() && !promotion) {
+            detail = dansCeLot.get();
             // Une demande déjà présente dans ce lot voyait ses étiquettes
             // ignorées : ni enregistrées sur la ligne, ni versées au catalogue.
             // Or c'est précisément en la reprenant qu'on précise quels
@@ -122,22 +130,48 @@ public class TestOrderAssignmentServiceImpl implements TestOrderAssignmentServic
                 detailRepository.save(detail);
             }
         } else {
-            if (courante.isPresent()) {
-                if (!dto.isConfirmerReaffectation()) {
+            boolean pourAvis = dto.isPourAvis() && !courantes.isEmpty();
+            if (!courantes.isEmpty()) {
+                if (!dto.isPourAvis() && !dto.isConfirmerReaffectation()) {
+                    TestOrderAssignmentDetail titulaire = courantes.stream()
+                            .filter(c -> !c.isPourAvis()).findFirst()
+                            .orElse(courantes.get(0));
                     throw new ReaffectationNonConfirmeeException(
-                            order.getCode(), medecinDe(courante.get()));
+                            order.getCode(), medecinDe(titulaire));
                 }
-                // La ligne précédente reste, datée. C'est elle qui dira plus
-                // tard à qui le dossier avait d'abord été confié — l'effacer
-                // rendrait l'historique muet sur tout ce qui précède le
-                // médecin actuel.
-                TestOrderAssignmentDetail precedente = courante.get();
-                precedente.setRemplaceeLe(LocalDateTime.now());
-                detailRepository.save(precedente);
-                log.info("Demande {} réaffectée : {} → lot {}",
-                        order.getCode(), medecinDe(precedente), assignment.getCode());
+                UUID medecinDuLot = assignment.getUser() == null ? null
+                        : assignment.getUser().getId();
+                if (pourAvis) {
+                    // Demander l'avis de qui a déjà le dossier ne lui donnerait
+                    // qu'une seconde ligne pour le même travail.
+                    courantes.stream()
+                            .filter(c -> memeMedecin(c, medecinDuLot))
+                            .findFirst()
+                            .ifPresent(c -> {
+                                throw new com.labo.anapath.common.exception.BusinessException(
+                                        medecinDe(c) + " a déjà la demande " + order.getCode() + ".");
+                            });
+                    log.info("Demande {} confiée pour avis au lot {}",
+                            order.getCode(), assignment.getCode());
+                } else {
+                    // Réaffecter retire le titulaire, pas les médecins consultés
+                    // pour avis — sauf le nouveau titulaire lui-même, qui ne
+                    // garde pas une ligne d'avis sur un dossier devenu le sien.
+                    // Les lignes retirées restent, datées : ce sont elles qui
+                    // diront plus tard à qui le dossier avait d'abord été confié.
+                    for (TestOrderAssignmentDetail c : courantes) {
+                        if (!c.isPourAvis() || memeMedecin(c, medecinDuLot)
+                                || dansCeLot.filter(l -> l == c).isPresent()) {
+                            c.setRemplaceeLe(LocalDateTime.now());
+                            detailRepository.save(c);
+                            log.info("Demande {} réaffectée : {} → lot {}",
+                                    order.getCode(), medecinDe(c), assignment.getCode());
+                        }
+                    }
+                }
             }
             detail = new TestOrderAssignmentDetail();
+            detail.setPourAvis(pourAvis);
             detail.setBranchId(assignment.getBranchId());
             detail.setTestOrderAssignment(assignment);
             detail.setTestOrder(order);
@@ -168,7 +202,7 @@ public class TestOrderAssignmentServiceImpl implements TestOrderAssignmentServic
 
         return new AssignmentDetailResponseDto(detail.getId(), order.getId(), order.getCode(),
                 statutDe(order), decoderEtiquettes(detail.getLabels()), detail.getNote(),
-                detail.getRemplaceeLe());
+                detail.getRemplaceeLe(), detail.isPourAvis());
     }
 
     /**
@@ -309,6 +343,13 @@ public class TestOrderAssignmentServiceImpl implements TestOrderAssignmentServic
                         (a, b) -> a));
     }
 
+    /** Vraie si la ligne désigne ce médecin. */
+    private static boolean memeMedecin(TestOrderAssignmentDetail detail, UUID medecinId) {
+        TestOrderAssignment lot = detail.getTestOrderAssignment();
+        return medecinId != null && lot != null && lot.getUser() != null
+                && medecinId.equals(lot.getUser().getId());
+    }
+
     /** Le médecin d'une ligne d'affectation, nom de famille en tête. */
     private static String medecinDe(TestOrderAssignmentDetail detail) {
         TestOrderAssignment lot = detail.getTestOrderAssignment();
@@ -356,7 +397,8 @@ public class TestOrderAssignmentServiceImpl implements TestOrderAssignmentServic
                                 .orElse(null),
                 detail.getCreatedAt(),
                 detail.getRemplaceeLe(),
-                detail.getDocteurStatus());
+                detail.getDocteurStatus(),
+                detail.isPourAvis());
     }
 
     @Override
@@ -374,7 +416,8 @@ public class TestOrderAssignmentServiceImpl implements TestOrderAssignmentServic
                         statutDe(d.getTestOrder()),
                         decoderEtiquettes(d.getLabels()),
                         d.getNote(),
-                        d.getRemplaceeLe()))
+                        d.getRemplaceeLe(),
+                        d.isPourAvis()))
                 .toList();
         return new AssignmentPrintDto(
                 toDto(assignment),
@@ -450,7 +493,8 @@ public class TestOrderAssignmentServiceImpl implements TestOrderAssignmentServic
                 statutDe(detail.getTestOrder()),
                 decoderEtiquettes(detail.getLabels()),
                 detail.getNote(),
-                detail.getRemplaceeLe());
+                detail.getRemplaceeLe(),
+                detail.isPourAvis());
     }
 
     @Override
@@ -627,7 +671,8 @@ public class TestOrderAssignmentServiceImpl implements TestOrderAssignmentServic
                 d.getNote(),
                 lot == null ? null : lot.getCode(),
                 lot == null ? null : lot.getDate(),
-                lot == null ? null : lot.getNote());
+                lot == null ? null : lot.getNote(),
+                d.isPourAvis());
     }
 
     /** {@inheritDoc} */

@@ -16,6 +16,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -122,7 +123,7 @@ class TestOrderAssignmentServiceImplTest {
 
         when(assignmentRepository.findByIdAndBranchId(eq(ASSIGNMENT_ID), any())).thenReturn(Optional.of(assignment));
         when(testOrderRepository.findByIdAndBranchId(eq(ORDER_ID), any())).thenReturn(Optional.of(order));
-        when(detailRepository.findByTestOrderId(ORDER_ID)).thenReturn(Optional.empty());
+        when(detailRepository.affectationsCourantes(ORDER_ID)).thenReturn(List.of());
         when(detailRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(macroRepository.findByTestOrderId(any())).thenReturn(Optional.empty());
         when(macroRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
@@ -156,7 +157,7 @@ class TestOrderAssignmentServiceImplTest {
 
         when(assignmentRepository.findByIdAndBranchId(eq(ASSIGNMENT_ID), any())).thenReturn(Optional.of(assignment));
         when(testOrderRepository.findByIdAndBranchId(eq(ORDER_ID), any())).thenReturn(Optional.of(order));
-        when(detailRepository.findByTestOrderId(ORDER_ID)).thenReturn(Optional.of(existingDetail));
+        when(detailRepository.affectationsCourantes(ORDER_ID)).thenReturn(List.of(existingDetail));
         when(macroRepository.findByTestOrderId(any())).thenReturn(Optional.of(existingMacro));
         when(macroRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 

@@ -421,13 +421,15 @@ public class DiscussionService {
                 .orElseGet(() -> discussions.save(
                         new Discussion(demande.getId(), branchId)));
 
-        // Les personnes que le dossier désigne déjà : le médecin affecté et le
-        // technicien qui a composé le lot. Les ajouter à l'ouverture évite
-        // qu'un fil naisse sans destinataire — un message au groupe n'irait
-        // alors à personne.
-        detailRepository.findByTestOrderId(demande.getId())
+        // Les personnes que le dossier désigne déjà : les médecins affectés —
+        // le titulaire et ceux consultés pour avis — et les techniciens qui
+        // ont composé leurs lots. Les ajouter à l'ouverture évite qu'un fil
+        // naisse sans destinataire — un message au groupe n'irait alors à
+        // personne.
+        detailRepository.affectationsCourantes(demande.getId()).stream()
                 .map(com.labo.anapath.testorder.TestOrderAssignmentDetail::getTestOrderAssignment)
-                .ifPresent(lot -> {
+                .filter(java.util.Objects::nonNull)
+                .forEach(lot -> {
                     if (lot.getUser() != null) {
                         ajouterAuFil(fil, lot.getUser().getId(), DiscussionParticipant.MEDECIN);
                     }

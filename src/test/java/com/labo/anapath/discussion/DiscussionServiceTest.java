@@ -83,7 +83,7 @@ class DiscussionServiceTest {
         when(userRepository.findById(AUTEUR)).thenReturn(Optional.of(auteur));
         when(userRepository.findAllById(any())).thenReturn(List.of(auteur));
 
-        when(detailRepository.findByTestOrderId(DEMANDE)).thenReturn(Optional.empty());
+        when(detailRepository.affectationsCourantes(DEMANDE)).thenReturn(List.of());
         when(messages.save(any())).thenAnswer(i -> i.getArgument(0));
         // Un dépôt rend ce qu'on lui confie. Le laisser rendre `null` glissait
         // un participant nul dans le fil, ce qui n'arrive jamais en vrai.

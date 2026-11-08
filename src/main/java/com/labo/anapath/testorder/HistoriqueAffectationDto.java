@@ -37,6 +37,7 @@ public record HistoriqueAffectationDto(
      * @param remplaceeLe    le moment où elle a cédé la place, {@code null} si
      *                       c'est celle qui vaut aujourd'hui
      * @param statutDuMedecin où en était ce médecin quand il l'avait
+     * @param pourAvis       vraie si le dossier lui a été confié pour avis
      */
     public record EtapeAffectationDto(
             UUID detailId,
@@ -48,7 +49,8 @@ public record HistoriqueAffectationDto(
             String confieePar,
             LocalDateTime confieeLe,
             LocalDateTime remplaceeLe,
-            String statutDuMedecin) {
+            String statutDuMedecin,
+            boolean pourAvis) {
 
         /** Vraie pour l'affectation qui vaut aujourd'hui. */
         public boolean courante() {

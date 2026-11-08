@@ -237,7 +237,27 @@ public class ReportServiceImpl implements ReportService {
                 report.getValidatedBy() != null ? NomComplet.de(
                         report.getValidatedBy().getLastname(),
                         report.getValidatedBy().getFirstname()) : null,
-                metierDe(report.getValidatedBy()));
+                metierDe(report.getValidatedBy()),
+                medecinsPourAvisDe(report));
+    }
+
+    /** Les médecins consultés pour avis sur la demande, dans l'ordre où on les a sollicités. */
+    private java.util.List<String> medecinsPourAvisDe(Report report) {
+        if (report.getTestOrder() == null || report.getTestOrder().getId() == null) {
+            return java.util.List.of();
+        }
+        UUID demandeId = report.getTestOrder().getId();
+        // Sans titulaire (sa ligne supprimée), un avis tient lieu de médecin
+        // affecté : il ne doit pas figurer une seconde fois parmi les avis.
+        var affiche = assignmentDetailRepository.findByTestOrderId(demandeId).orElse(null);
+        return assignmentDetailRepository.affectationsCourantes(demandeId).stream()
+                .filter(com.labo.anapath.testorder.TestOrderAssignmentDetail::isPourAvis)
+                .filter(d -> d != affiche)
+                .map(com.labo.anapath.testorder.TestOrderAssignmentDetail::getTestOrderAssignment)
+                .filter(a -> a != null && a.getUser() != null)
+                .map(a -> NomComplet.de(a.getUser().getLastname(), a.getUser().getFirstname()))
+                .toList()
+                .reversed(); // la requête rend la plus récente d'abord
     }
 
     /**
