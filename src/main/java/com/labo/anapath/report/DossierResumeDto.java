@@ -48,6 +48,12 @@ public record DossierResumeDto(
         /** La note propre à cette demande. */
         String assignmentNote,
         /** La note générale du lot, partagée par toutes ses demandes. */
-        String assignmentLotNote
+        String assignmentLotNote,
+        /**
+         * Les médecins consultés pour avis, nom de famille en tête. Vide quand
+         * il n'y en a pas. C'est par ce résumé que l'application mobile ouvre la
+         * fiche d'une demande : sans lui, l'avis ne s'y voyait pas.
+         */
+        java.util.List<String> medecinsPourAvis
 ) {
 }
