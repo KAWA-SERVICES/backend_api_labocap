@@ -612,7 +612,7 @@ public class TestOrderController {
                 f.demandeCreatedAt(), f.deliveryDate(),
                 f.assignedToName(), f.assignmentCode(), f.assignmentDate(),
                 f.assignmentLabels(), f.assignmentNote(), f.assignmentLotNote(),
-                f.medecinsPourAvis());
+                f.medecinsPourAvis(), f.avis());
     }
 
     @GetMapping("/index")

@@ -54,6 +54,8 @@ public record DossierResumeDto(
          * il n'y en a pas. C'est par ce résumé que l'application mobile ouvre la
          * fiche d'une demande : sans lui, l'avis ne s'y voyait pas.
          */
-        java.util.List<String> medecinsPourAvis
+        java.util.List<String> medecinsPourAvis,
+        /** Les mêmes, avec la date de leur lot. */
+        java.util.List<AvisDto> avis
 ) {
 }
