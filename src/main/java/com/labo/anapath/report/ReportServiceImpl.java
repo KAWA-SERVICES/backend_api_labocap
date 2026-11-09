@@ -176,7 +176,8 @@ public class ReportServiceImpl implements ReportService {
                 detail.assignmentDate(),
                 detail.assignmentLabels(),
                 detail.assignmentNote(),
-                detail.assignmentLotNote());
+                detail.assignmentLotNote(),
+                detail.medecinsPourAvis());
     }
 
     @Override
