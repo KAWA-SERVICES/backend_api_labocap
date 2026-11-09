@@ -611,7 +611,8 @@ public class TestOrderController {
                 f.retrieverName(), f.retrieverRelation(), null,
                 f.demandeCreatedAt(), f.deliveryDate(),
                 f.assignedToName(), f.assignmentCode(), f.assignmentDate(),
-                f.assignmentLabels(), f.assignmentNote(), f.assignmentLotNote());
+                f.assignmentLabels(), f.assignmentNote(), f.assignmentLotNote(),
+                f.medecinsPourAvis());
     }
 
     @GetMapping("/index")
