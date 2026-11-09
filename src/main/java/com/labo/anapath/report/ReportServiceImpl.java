@@ -177,7 +177,8 @@ public class ReportServiceImpl implements ReportService {
                 detail.assignmentLabels(),
                 detail.assignmentNote(),
                 detail.assignmentLotNote(),
-                detail.medecinsPourAvis());
+                detail.medecinsPourAvis(),
+                detail.avis());
     }
 
     @Override
@@ -200,6 +201,7 @@ public class ReportServiceImpl implements ReportService {
         }
 
         Affectation affectation = affectationDe(report);
+        java.util.List<AvisDto> avis = avisDe(report);
 
         return new ReportDetailDto(
                 report.getId(), report.getCode(),
@@ -239,11 +241,12 @@ public class ReportServiceImpl implements ReportService {
                         report.getValidatedBy().getLastname(),
                         report.getValidatedBy().getFirstname()) : null,
                 metierDe(report.getValidatedBy()),
-                medecinsPourAvisDe(report));
+                avis.stream().map(AvisDto::medecin).toList(),
+                avis);
     }
 
-    /** Les médecins consultés pour avis sur la demande, dans l'ordre où on les a sollicités. */
-    private java.util.List<String> medecinsPourAvisDe(Report report) {
+    /** Les médecins consultés pour avis sur la demande, avec la date de leur lot, dans l'ordre où on les a sollicités. */
+    private java.util.List<AvisDto> avisDe(Report report) {
         if (report.getTestOrder() == null || report.getTestOrder().getId() == null) {
             return java.util.List.of();
         }
@@ -256,7 +259,9 @@ public class ReportServiceImpl implements ReportService {
                 .filter(d -> d != affiche)
                 .map(com.labo.anapath.testorder.TestOrderAssignmentDetail::getTestOrderAssignment)
                 .filter(a -> a != null && a.getUser() != null)
-                .map(a -> NomComplet.de(a.getUser().getLastname(), a.getUser().getFirstname()))
+                .map(a -> new AvisDto(
+                        NomComplet.de(a.getUser().getLastname(), a.getUser().getFirstname()),
+                        a.getDate()))
                 .toList()
                 .reversed(); // la requête rend la plus récente d'abord
     }

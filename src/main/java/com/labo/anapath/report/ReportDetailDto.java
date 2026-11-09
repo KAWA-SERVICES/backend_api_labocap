@@ -114,7 +114,13 @@ public record ReportDetailDto(
          * famille en tête. Vide quand il n'y en a pas ; le titulaire, lui, est
          * {@code assignedToName}.
          */
-        List<String> medecinsPourAvis
+        List<String> medecinsPourAvis,
+        /**
+         * Les mêmes, avec la date de leur lot — ce que la fiche affiche.
+         * {@code medecinsPourAvis} reste pour les versions de l'application qui
+         * ne lisent que les noms.
+         */
+        List<AvisDto> avis
 ) {
     public record LogReportDto(String action, String description, String userName, LocalDateTime createdAt) {}
 }

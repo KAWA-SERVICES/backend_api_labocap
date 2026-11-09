@@ -50,6 +50,7 @@ class DossierResumeFideleTest {
     private static Object valeurPour(RecordComponent c) {
         Class<?> t = c.getType();
         if (c.getName().equals("medecinsPourAvis")) return List.of("TAKIN Paul");
+        if (c.getName().equals("avis")) return List.of(new AvisDto("TAKIN Paul", java.time.LocalDate.of(2026, 11, 9)));
         if (t == boolean.class) return true;
         if (t == String.class) return c.getName();
         if (t == UUID.class) return UUID.randomUUID();
