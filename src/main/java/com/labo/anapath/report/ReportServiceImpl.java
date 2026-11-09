@@ -257,11 +257,16 @@ public class ReportServiceImpl implements ReportService {
         return assignmentDetailRepository.affectationsCourantes(demandeId).stream()
                 .filter(com.labo.anapath.testorder.TestOrderAssignmentDetail::isPourAvis)
                 .filter(d -> d != affiche)
-                .map(com.labo.anapath.testorder.TestOrderAssignmentDetail::getTestOrderAssignment)
-                .filter(a -> a != null && a.getUser() != null)
-                .map(a -> new AvisDto(
-                        NomComplet.de(a.getUser().getLastname(), a.getUser().getFirstname()),
-                        a.getDate()))
+                .filter(d -> d.getTestOrderAssignment() != null
+                        && d.getTestOrderAssignment().getUser() != null)
+                // Le jour où l'avis a été demandé, et non la date du lot : un
+                // lot ouvert en septembre peut recevoir une demande d'avis en
+                // novembre, et sa date ferait croire l'avis aussi ancien que
+                // l'affectation d'origine.
+                .map(d -> new AvisDto(
+                        NomComplet.de(d.getTestOrderAssignment().getUser().getLastname(),
+                                d.getTestOrderAssignment().getUser().getFirstname()),
+                        d.getCreatedAt() == null ? null : d.getCreatedAt().toLocalDate()))
                 .toList()
                 .reversed(); // la requête rend la plus récente d'abord
     }
