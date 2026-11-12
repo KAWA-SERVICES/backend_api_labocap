@@ -39,6 +39,9 @@ public interface LogReportRepository extends JpaRepository<LogReport, UUID> {
      */
     List<LogReport> findByReportIdAndActionOrderByCreatedAtAsc(UUID reportId, String action);
 
+    /** Vrai si le compte rendu a déjà au journal une entrée de ce libellé exact. */
+    boolean existsByReportIdAndAction(UUID reportId, String action);
+
     /**
      * Retourne l'historique global paginé d'une branche (la plus récente d'abord).
      *

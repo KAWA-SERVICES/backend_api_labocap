@@ -224,31 +224,56 @@ class NotificationServiceImplTest {
     }
 
     @Test
-    @DisplayName("notifyPatient : SMS puis appel, pour tous les patients")
-    void notifyPatient_smsEtAppel() {
+    @DisplayName("notifyPatient : appel seul, pas de SMS d'office")
+    void notifyPatient_appelSeul() {
         report("97000001", null);
 
         NotifyResponseDto result = service.notifyPatient(REPORT_ID, USER_ID);
 
-        verify(smsSender).envoyer(eq("2290197000001"), any(), eq(SmsSender.SOURCE_RESULTAT), any(), eq("26-4099"));
         verify(fluidChatClient).lancer(any(), any(), any(), any(), any(), any(), any());
+        verify(smsSender, never()).envoyer(any(), any(), any(), any(), any());
         assertThat(result.channel()).isEqualTo("CALL");
-        assertThat(result.message()).isEqualTo("SMS envoyé et appel programmé");
+        assertThat(result.message()).isEqualTo("Appel programmé");
     }
 
     @Test
-    @DisplayName("notifyPatient : FluidChat en panne, le SMS suffit à prévenir")
-    void notifyPatient_appelEnEchec_smsSeul() {
+    @DisplayName("notifyPatient : l'appel ne peut pas partir (refus) → SMS en secours")
+    void notifyPatient_appelRefuse_smsDeSecours() {
         report("97000001", null);
-        when(fluidChatClient.lancer(any(), any(), any(), any(), any(), any(), any())).thenThrow(new ExternalApiException("panne"));
+        when(fluidChatClient.lancer(any(), any(), any(), any(), any(), any(), any())).thenThrow(new ExternalApiException("refus"));
 
         NotifyResponseDto result = service.notifyPatient(REPORT_ID, USER_ID);
 
         assertThat(result.channel()).isEqualTo("SMS");
+        verify(smsSender).envoyer(eq("2290197000001"), any(), eq(SmsSender.SOURCE_RESULTAT), any(), eq("26-4099"));
     }
 
     @Test
-    @DisplayName("notifyPatient : ni SMS ni appel, l'erreur remonte pour que la tâche réessaie")
+    @DisplayName("notifyPatient : FluidChat en panne → pas de SMS, l'erreur remonte, l'appel est renvoyé plus tard")
+    void notifyPatient_panneFluidChat_pasDeSms() {
+        Report report = report("97000001", null);
+        when(fluidChatClient.lancer(any(), any(), any(), any(), any(), any(), any()))
+                .thenThrow(new FluidChatIndisponibleException("panne", null));
+
+        assertThatThrownBy(() -> service.notifyPatient(REPORT_ID, USER_ID))
+                .isInstanceOf(FluidChatIndisponibleException.class);
+        verify(smsSender, never()).envoyer(any(), any(), any(), any(), any());
+        assertThat(report.getPatientNotifiedAt()).isNull();
+    }
+
+    @Test
+    @DisplayName("notifyPatient : un appel déjà en file → pas de SMS de secours")
+    void notifyPatient_appelDejaEnFile_pasDeSms() {
+        report("97000001", null);
+        when(appelByReportRepository.existsByReportIdAndIssue(REPORT_ID, IssueRappel.EN_COURS)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.notifyPatient(REPORT_ID, USER_ID))
+                .isInstanceOf(InvalidOperationException.class);
+        verify(smsSender, never()).envoyer(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("notifyPatient : ni appel ni SMS de secours, l'erreur remonte pour que la tâche réessaie")
     void notifyPatient_toutEnEchec_leve() {
         Report report = report("97000001", null);
         when(fluidChatClient.lancer(any(), any(), any(), any(), any(), any(), any())).thenThrow(new ExternalApiException("panne"));
@@ -359,6 +384,69 @@ class NotificationServiceImplTest {
         assertThat(appel.getFinishedAt()).isAfter(premiereFin);
         assertThat(report.isCalled()).isTrue();
         verify(reportRepository).save(report);
+    }
+
+    private AppelByReport appelEnCours(Report report) {
+        AppelByReport appel = new AppelByReport();
+        appel.setAppelId("57");
+        appel.setReport(report);
+        appel.setIssue(IssueRappel.EN_COURS);
+        return appel;
+    }
+
+    @Test
+    @DisplayName("actualiser : appel fini injoignable → SMS « résultat disponible » au patient")
+    void actualiser_injoignable_envoieLeSms() {
+        Report report = report("97000001", null);
+        when(fluidChatClient.lire(57)).thenReturn(new FluidChatClient.Appel(57, "failed", "unreachable", null, 3));
+
+        service.actualiser(appelEnCours(report));
+
+        verify(smsSender).envoyer(eq("2290197000001"), any(), eq(SmsSender.SOURCE_RESULTAT), any(), eq("26-4099"));
+    }
+
+    @Test
+    @DisplayName("actualiser : sans réponse, SMS déjà au journal → pas de second SMS")
+    void actualiser_sansReponse_smsDejaParti() {
+        Report report = report("97000001", null);
+        when(fluidChatClient.lire(57)).thenReturn(new FluidChatClient.Appel(57, "failed", "no_answer", null, 3));
+        when(logReportRepository.existsByReportIdAndAction(REPORT_ID, NotificationServiceImpl.ACTION_SMS)).thenReturn(true);
+
+        service.actualiser(appelEnCours(report));
+
+        verify(smsSender, never()).envoyer(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("actualiser : injoignable mais patient déjà marqué informé → pas de SMS")
+    void actualiser_injoignable_dejaInforme() {
+        Report report = report("97000001", null);
+        report.setCalled(true);
+        when(fluidChatClient.lire(57)).thenReturn(new FluidChatClient.Appel(57, "failed", "unreachable", null, 3));
+
+        service.actualiser(appelEnCours(report));
+
+        verify(smsSender, never()).envoyer(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("actualiser : joint ou encore en cours → pas de SMS ; un échec d'envoi ne casse pas le suivi")
+    void actualiser_jointOuEnCours_pasDeSms() {
+        Report report = report("97000001", null);
+        when(fluidChatClient.lire(57)).thenReturn(
+                new FluidChatClient.Appel(57, "answered", "completed", 100, 1),
+                new FluidChatClient.Appel(57, "calling", "no_answer", null, 2));
+
+        service.actualiser(appelEnCours(report));
+        service.actualiser(appelEnCours(report));
+        verify(smsSender, never()).envoyer(any(), any(), any(), any(), any());
+
+        report.setCalled(false);
+        when(fluidChatClient.lire(57)).thenReturn(new FluidChatClient.Appel(57, "failed", "busy", null, 3));
+        doThrow(new ExternalApiException("sms")).when(smsSender).envoyer(any(), any(), any(), any(), any());
+        AppelByReport appel = appelEnCours(report);
+        service.actualiser(appel);
+        assertThat(appel.getIssue()).isEqualTo(IssueRappel.SANS_REPONSE);
     }
 
     @Test

@@ -282,7 +282,9 @@ public interface ReportRepository extends JpaRepository<Report, UUID> {
                 ap.attempts as rappelTentatives,
                 ap.listened_pct as rappelPctEcoute,
                 ap.created_at as rappelDate,
-                COALESCE(nb.total, 0) as rappelAppelsTotal
+                COALESCE(nb.total, 0) as rappelAppelsTotal,
+                (SELECT COUNT(*) FROM log_reports l
+                 WHERE l.report_id = r.id AND l.action = 'SMS envoyé') as smsEnvoyes
             FROM reports r
             JOIN test_orders t ON r.test_order_id = t.id
             JOIN patients p ON t.patient_id = p.id
