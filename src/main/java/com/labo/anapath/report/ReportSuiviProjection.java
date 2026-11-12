@@ -30,4 +30,6 @@ public interface ReportSuiviProjection {
     LocalDateTime getRappelDate();
     /** Nombre total d'appels de rappel reçus par ce compte rendu, tous statuts confondus. */
     Integer getRappelAppelsTotal();
+    /** SMS « résultat disponible » partis pour ce compte rendu, automatiques et manuels. */
+    Integer getSmsEnvoyes();
 }
