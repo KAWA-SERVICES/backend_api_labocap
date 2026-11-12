@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -48,6 +49,9 @@ public class NotificationServiceImpl implements NotificationService {
     private final SmsSender smsSender;
     /** Ce que FluidChat n'a pas reçu, renvoyé avec la même clé. */
     private final DemandesEnAttente demandes;
+
+    /** Libellé du journal d'un SMS de résultat parti : sert aussi de marque « déjà envoyé ». */
+    static final String ACTION_SMS = "SMS envoyé";
 
     /**
      * Met en file chez FluidChat l'appel « votre résultat est disponible ».
@@ -135,6 +139,35 @@ public class NotificationServiceImpl implements NotificationService {
             report.setCalled(true);
             reportRepository.save(report);
         }
+        if (report != null && INJOIGNABLE_PAR_APPEL.contains(appel.getIssue())) {
+            smsSiInjoignable(report);
+        }
+    }
+
+    /** Issues finales d'un appel qui n'a pas joint le patient : le SMS prend le relais. */
+    private static final Set<IssueRappel> INJOIGNABLE_PAR_APPEL = Set.of(IssueRappel.SANS_REPONSE, IssueRappel.INJOIGNABLE);
+
+    /**
+     * SMS « résultat disponible » au patient que l'appel n'a pas joint, une seule
+     * fois par compte rendu : FluidChat et la tâche de relance relisent l'appel, et
+     * relancent, plusieurs fois. Le journal du compte rendu sert de marque — il
+     * compte aussi un SMS envoyé à la main ou par l'ancien avis (SMS + appel).
+     *
+     * <p>Lu sur {@code is_called} et pas sur le seul appel : un appel plus ancien
+     * peut avoir joint le patient entre-temps. Une erreur d'envoi ne casse pas la
+     * relecture de l'appel ; une panne de FluidChat est déjà mise en file par
+     * {@link #sendSms}.</p>
+     */
+    private void smsSiInjoignable(Report report) {
+        if (report.isCalled() || report.isDelivered()
+                || logReportRepository.existsByReportIdAndAction(report.getId(), ACTION_SMS)) {
+            return;
+        }
+        try {
+            sendSms(report.getId(), null);
+        } catch (RuntimeException e) {
+            log.warn("Compte-rendu {} : SMS de patient injoignable non envoyé : {}", report.getId(), e.getMessage());
+        }
     }
 
     static void appliquer(AppelByReport appel, FluidChatClient.Appel lu) {
@@ -197,18 +230,19 @@ public class NotificationServiceImpl implements NotificationService {
         report.setPatientNotifiedAt(LocalDateTime.now());
         reportRepository.save(report);
 
-        logAction(reportId, "SMS envoyé", userId, report.getBranchId());
+        logAction(reportId, ACTION_SMS, userId, report.getBranchId());
 
         return new SmsResponseDto("sent");
     }
 
     /**
-     * Prévient le patient que son résultat est disponible : SMS, puis appel.
+     * Prévient le patient que son résultat est disponible : par appel seulement.
      *
-     * <p>Les deux partent, chacun pour soi : un SMS refusé ne doit pas priver le
-     * patient de son appel, ni l'inverse. L'avis compte comme donné dès que l'un
-     * des deux est parti ; si aucun ne part, l'erreur remonte et la tâche de
-     * rappel réessaie au passage suivant.</p>
+     * <p>Le SMS ne part que si l'appel n'aboutit pas : à la relecture d'un appel
+     * fini sans réponse ou injoignable ({@link #actualiser}), ou tout de suite,
+     * en secours, si l'appel ne peut pas partir (audio manquant, refus de
+     * FluidChat). Une panne de FluidChat n'appelle pas de secours : l'appel est
+     * gardé et renvoyé, et l'erreur remonte pour que la tâche de rappel réessaie.</p>
      *
      * <p>Un patient sans numéro n'est pas réessayé : une ligne {@code SANS_NUMERO}
      * le signale au secrétariat, et l'avis est marqué donné pour ne pas reboucler.</p>
@@ -232,24 +266,18 @@ public class NotificationServiceImpl implements NotificationService {
                     "Aucun numéro de téléphone : le patient est à prévenir par le secrétariat");
         }
 
-        RuntimeException echec = null;
-        boolean smsParti = false;
-        try {
-            sendSms(reportId, userId);
-            smsParti = true;
-        } catch (RuntimeException e) {
-            log.warn("Compte-rendu {} : SMS de résultat non envoyé : {}", reportId, e.getMessage());
-            echec = e;
-        }
         try {
             CallResponseDto call = callPatient(reportId, userId);
-            return new NotifyResponseDto("CALL", reportId, call.appelId(),
-                    smsParti ? "SMS envoyé et appel programmé" : "Appel programmé (SMS non envoyé)");
+            return new NotifyResponseDto("CALL", reportId, call.appelId(), "Appel programmé");
+        } catch (FluidChatIndisponibleException e) {
+            throw e;
         } catch (RuntimeException e) {
-            log.warn("Compte-rendu {} : appel de rappel non lancé : {}", reportId, e.getMessage());
-            if (!smsParti) {
-                throw echec != null ? echec : e;
+            // Un appel déjà en file (second clic sur « Prévenir ») : il n'a pas encore échoué.
+            if (appelByReportRepository.existsByReportIdAndIssue(reportId, IssueRappel.EN_COURS)) {
+                throw e;
             }
+            log.warn("Compte-rendu {} : appel de rappel non lancé, SMS en secours : {}", reportId, e.getMessage());
+            sendSms(reportId, userId);
         }
         return new NotifyResponseDto("SMS", reportId, null, "SMS envoyé (appel non lancé)");
     }

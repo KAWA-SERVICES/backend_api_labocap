@@ -496,7 +496,8 @@ public class ReportServiceImpl implements ReportService {
                 p.getRappelPctEcoute(),
                 p.getRappelDate(),
                 p.getRappelAppelsTotal() != null ? p.getRappelAppelsTotal() : 0,
-                p.getRappelAppelsTotal() != null && p.getRappelAppelsTotal() > seuil
+                p.getRappelAppelsTotal() != null && p.getRappelAppelsTotal() > seuil,
+                p.getSmsEnvoyes() != null ? p.getSmsEnvoyes() : 0
         )));
     }
 

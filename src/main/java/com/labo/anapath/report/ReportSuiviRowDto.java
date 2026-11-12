@@ -34,5 +34,7 @@ public record ReportSuiviRowDto(
         /** Total des appels reçus, tous statuts confondus (indépendant du dernier appel ci-dessus). */
         int rappelAppelsTotal,
         /** Vrai si {@code rappelAppelsTotal} dépasse {@code rappel_tentatives_max} — cas à auditer. */
-        boolean rappelAnormal
+        boolean rappelAnormal,
+        /** SMS « résultat disponible » partis, automatiques et manuels (journal du compte rendu). */
+        int smsEnvoyes
 ) {}

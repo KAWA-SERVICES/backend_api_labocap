@@ -118,7 +118,7 @@ class RappelAutomatiqueIT {
     }
 
     @Test
-    @DisplayName("FluidChat injoignable : SMS et appel gardés malgré l'annulation, renvoyés avec la même clé à son retour")
+    @DisplayName("FluidChat injoignable : l'appel est gardé malgré l'annulation, sans SMS d'office, renvoyé avec la même clé à son retour")
     void panneDeFluidChat_renvoiAvecLaMemeCle() {
         when(reglagesDeRappel.delaiHeures()).thenReturn(24);
         when(reglagesDeRappel.audio(any())).thenReturn("custom/16");
@@ -133,7 +133,8 @@ class RappelAutomatiqueIT {
         job.rattraperAvisEnAttente();
 
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM demandes_fluidchat WHERE cible_id = ? AND abandonnee_le IS NULL",
-                Integer.class, report.getId())).isEqualTo(2);
+                Integer.class, report.getId())).isEqualTo(1);
+        verify(smsSender, org.mockito.Mockito.never()).envoyer(any(), any(), any(), any(), any());
         org.mockito.ArgumentCaptor<String> cles = org.mockito.ArgumentCaptor.forClass(String.class);
         verify(fluidChatClient, times(2)).lancer(anyString(), anyString(), any(), anyString(), any(), any(), cles.capture());
         assertThat(cles.getAllValues().get(1)).isEqualTo(cles.getAllValues().get(0));
